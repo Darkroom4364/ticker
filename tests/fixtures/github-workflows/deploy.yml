@@ -1,0 +1,13 @@
+name: Daily Deploy
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run deploy

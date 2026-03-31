@@ -1,0 +1,9 @@
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "check"

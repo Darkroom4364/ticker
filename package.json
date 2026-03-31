@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-eventbridge": "^3.1021.0",
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "yaml": "^2.8.3"
   }
 }
