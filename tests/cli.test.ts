@@ -23,14 +23,16 @@ describe("ticker CLI", () => {
     expect(output).toContain("scan");
   });
 
-  it("scan command prints placeholder output", () => {
+  it("scan command produces table output by default", () => {
     const output = run("scan");
-    expect(output).toContain("Scanning for scheduled jobs");
-    expect(output).toContain("Format: table");
+    // With no scanners available in CI, should show empty results message
+    expect(output).toContain("No scheduled tasks found");
   });
 
-  it("scan command accepts --format flag", () => {
+  it("scan command accepts --format json flag", () => {
     const output = run("scan", "--format", "json");
-    expect(output).toContain("Format: json");
+    // Should produce valid JSON (empty array when no scanners available)
+    const parsed = JSON.parse(output);
+    expect(Array.isArray(parsed)).toBe(true);
   });
 });

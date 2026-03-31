@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "description": "CLI that discovers every scheduled job across infrastructure",
   "type": "module",
+  "main": "./dist/index.js",
   "bin": {
     "ticker": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
