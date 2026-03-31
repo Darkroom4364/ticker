@@ -1,22 +1,18 @@
 export interface ScheduledTask {
-  /** Unique identifier for the task (scanner-specific) */
-  id: string;
   /** Human-readable name or description */
   name: string;
-  /** Cron expression or schedule string */
+  /** Cron expression or schedule string (raw cron/timer string) */
   schedule: string;
-  /** The command or action that runs */
-  command: string;
   /** Which scanner discovered this task */
   source: string;
-  /** Where the task is running (hostname, cluster, etc.) */
-  location: string;
-  /** Whether the task is currently enabled */
-  enabled: boolean;
-  /** ISO timestamp of the next expected run, if computable */
-  nextRun?: string;
+  /** Next scheduled run time, if computable */
+  nextRun?: Date;
+  /** Human-readable interval description (e.g. "Every day at 2:30 AM") */
+  interval?: string;
+  /** The command or action that runs */
+  command?: string;
   /** Additional scanner-specific metadata */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, string>;
 }
 
 export interface ScanOptions {
