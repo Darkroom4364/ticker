@@ -1,0 +1,26 @@
+{
+  "name": "ticker",
+  "version": "0.1.0",
+  "description": "CLI that discovers every scheduled job across infrastructure",
+  "type": "module",
+  "bin": {
+    "ticker": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": ["cron", "scheduler", "infrastructure", "cli"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "commander": "^13.0.0"
+  }
+}
