@@ -1,15 +1,25 @@
 {
-  "name": "ticker",
+  "name": "@darkroom4364/ticker",
   "version": "0.1.0",
   "description": "CLI that discovers every scheduled job across infrastructure",
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "ticker": "./dist/cli.js"
   },
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Darkroom4364/ticker"
+  },
+  "author": "Darkroom4364",
+  "homepage": "https://github.com/Darkroom4364/ticker",
+  "bugs": {
+    "url": "https://github.com/Darkroom4364/ticker/issues"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
