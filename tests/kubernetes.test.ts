@@ -247,5 +247,73 @@ describe("KubernetesScanner", () => {
         expect(task.source).toBe("kubernetes");
       }
     });
+
+    it("skips malformed CronJobs and returns valid ones", async () => {
+      const listWithMalformed = JSON.stringify({
+        items: [
+          {
+            metadata: {
+              name: "good-job",
+              namespace: "production",
+              annotations: {},
+            },
+            spec: {
+              schedule: "0 2 * * *",
+              suspend: false,
+              jobTemplate: {
+                spec: {
+                  template: {
+                    spec: {
+                      containers: [{ name: "worker", image: "myregistry/worker:latest" }],
+                    },
+                  },
+                },
+              },
+            },
+            status: {},
+          },
+          {
+            // Malformed: missing spec entirely
+            metadata: {
+              name: "bad-job",
+              namespace: "default",
+            },
+          },
+          {
+            metadata: {
+              name: "another-good-job",
+              namespace: "staging",
+              annotations: {},
+            },
+            spec: {
+              schedule: "0 8 * * 1-5",
+              suspend: false,
+              jobTemplate: {
+                spec: {
+                  template: {
+                    spec: {
+                      containers: [{ name: "report", image: "myregistry/report:v2" }],
+                    },
+                  },
+                },
+              },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({
+        "kubectl get cronjobs": listWithMalformed,
+        "which": "/usr/local/bin/kubectl",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+
+      // Should have 2 valid tasks, skipping the malformed one
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].name).toBe("production/good-job");
+      expect(tasks[1].name).toBe("staging/another-good-job");
+    });
   });
 });

@@ -57,46 +57,50 @@ export class KubernetesScanner implements Scanner {
       const list: K8sCronJobList = JSON.parse(stdout);
 
       for (const cronJob of list.items) {
-        const { metadata, spec, status } = cronJob;
-        const fullName = `${metadata.namespace}/${metadata.name}`;
-        const schedule = spec.schedule;
-
-        let nextRun: Date | undefined;
-        let interval: string | undefined;
         try {
-          const parsed = parseCronExpression(schedule);
-          nextRun = parsed.nextRun;
-          interval = parsed.interval;
+          const { metadata, spec, status } = cronJob;
+          const fullName = `${metadata.namespace}/${metadata.name}`;
+          const schedule = spec.schedule;
+
+          let nextRun: Date | undefined;
+          let interval: string | undefined;
+          try {
+            const parsed = parseCronExpression(schedule);
+            nextRun = parsed.nextRun;
+            interval = parsed.interval;
+          } catch {
+            // Schedule couldn't be parsed
+          }
+
+          const containers = spec.jobTemplate.spec.template.spec.containers;
+          const image = containers.length > 0 ? containers[0].image : undefined;
+          const description =
+            metadata.annotations?.["description"] ??
+            metadata.annotations?.["kubernetes.io/description"] ??
+            undefined;
+
+          const taskMetadata: Record<string, string> = {
+            namespace: metadata.namespace,
+          };
+          if (image) taskMetadata.image = image;
+          if (status?.lastScheduleTime) taskMetadata.lastScheduleTime = status.lastScheduleTime;
+          if (spec.suspend) taskMetadata.suspended = "true";
+
+          const task: ScheduledTask = {
+            name: fullName,
+            schedule,
+            source: "kubernetes",
+            nextRun,
+            interval,
+            command: image,
+            metadata: taskMetadata,
+            ...(description ? { description } : {}),
+          };
+
+          tasks.push(task);
         } catch {
-          // Schedule couldn't be parsed
+          // Skip malformed CronJob — continue with remaining items
         }
-
-        const containers = spec.jobTemplate.spec.template.spec.containers;
-        const image = containers.length > 0 ? containers[0].image : undefined;
-        const description =
-          metadata.annotations?.["description"] ??
-          metadata.annotations?.["kubernetes.io/description"] ??
-          undefined;
-
-        const taskMetadata: Record<string, string> = {
-          namespace: metadata.namespace,
-        };
-        if (image) taskMetadata.image = image;
-        if (status?.lastScheduleTime) taskMetadata.lastScheduleTime = status.lastScheduleTime;
-        if (spec.suspend) taskMetadata.suspended = "true";
-
-        const task: ScheduledTask = {
-          name: fullName,
-          schedule,
-          source: "kubernetes",
-          nextRun,
-          interval,
-          command: image,
-          metadata: taskMetadata,
-          ...(description ? { description } : {}),
-        };
-
-        tasks.push(task);
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

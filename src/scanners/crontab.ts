@@ -10,6 +10,18 @@ const execAsync = promisify(exec);
 /** Regex to detect environment variable lines like SHELL=/bin/bash */
 const ENV_VAR_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
+/** Map @-shortcut names to standard 5-field cron expressions */
+const CRON_SHORTCUTS: Record<string, string | null> = {
+  "@yearly": "0 0 1 1 *",
+  "@annually": "0 0 1 1 *",
+  "@monthly": "0 0 1 * *",
+  "@weekly": "0 0 * * 0",
+  "@daily": "0 0 * * *",
+  "@midnight": "0 0 * * *",
+  "@hourly": "0 * * * *",
+  "@reboot": null, // Special: no cron equivalent
+};
+
 /** Extract the command name (first word/path basename) for the task name */
 function deriveTaskName(command: string): string {
   const firstWord = command.trim().split(/\s+/)[0];
@@ -19,11 +31,25 @@ function deriveTaskName(command: string): string {
 }
 
 /**
- * Parse a user-format crontab line (5 fields + command):
+ * Parse a user-format crontab line (5 fields + command or @shortcut command):
  *   min hour dom mon dow command
+ *   @daily command
  */
 function parseUserCronLine(line: string): { schedule: string; command: string } | null {
-  const parts = line.trim().split(/\s+/);
+  const trimmed = line.trim();
+
+  // Handle @-shortcut entries
+  if (trimmed.startsWith("@")) {
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 2) return null;
+    const shortcut = parts[0].toLowerCase();
+    if (!(shortcut in CRON_SHORTCUTS)) return null;
+    const schedule = CRON_SHORTCUTS[shortcut] ?? shortcut; // Use mapped expression, or raw shortcut for @reboot
+    const command = parts.slice(1).join(" ");
+    return { schedule, command };
+  }
+
+  const parts = trimmed.split(/\s+/);
   if (parts.length < 6) return null;
 
   const schedule = parts.slice(0, 5).join(" ");
@@ -32,11 +58,26 @@ function parseUserCronLine(line: string): { schedule: string; command: string } 
 }
 
 /**
- * Parse a system-format crontab line (5 fields + user + command):
+ * Parse a system-format crontab line (5 fields + user + command or @shortcut user command):
  *   min hour dom mon dow user command
+ *   @daily user command
  */
 function parseSystemCronLine(line: string): { schedule: string; command: string; user: string } | null {
-  const parts = line.trim().split(/\s+/);
+  const trimmed = line.trim();
+
+  // Handle @-shortcut entries
+  if (trimmed.startsWith("@")) {
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 3) return null; // Need @shortcut + user + command
+    const shortcut = parts[0].toLowerCase();
+    if (!(shortcut in CRON_SHORTCUTS)) return null;
+    const schedule = CRON_SHORTCUTS[shortcut] ?? shortcut;
+    const user = parts[1];
+    const command = parts.slice(2).join(" ");
+    return { schedule, command, user };
+  }
+
+  const parts = trimmed.split(/\s+/);
   if (parts.length < 7) return null;
 
   const schedule = parts.slice(0, 5).join(" ");

@@ -225,6 +225,129 @@ describe("CrontabScanner", () => {
     });
   });
 
+  describe("scan — @-shortcut entries", () => {
+    it("parses @daily shortcut", async () => {
+      mockExecByCommand({
+        "crontab -l": "@daily /usr/bin/backup.sh",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("0 0 * * *");
+      expect(tasks[0].command).toBe("/usr/bin/backup.sh");
+      expect(tasks[0].nextRun).toBeInstanceOf(Date);
+    });
+
+    it("parses @hourly shortcut", async () => {
+      mockExecByCommand({
+        "crontab -l": "@hourly /usr/bin/check-health",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("0 * * * *");
+      expect(tasks[0].command).toBe("/usr/bin/check-health");
+    });
+
+    it("parses @weekly shortcut", async () => {
+      mockExecByCommand({
+        "crontab -l": "@weekly /usr/bin/weekly-report",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("0 0 * * 0");
+    });
+
+    it("parses @monthly shortcut", async () => {
+      mockExecByCommand({
+        "crontab -l": "@monthly /usr/bin/monthly-cleanup",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("0 0 1 * *");
+    });
+
+    it("parses @yearly and @annually shortcuts", async () => {
+      mockExecByCommand({
+        "crontab -l": "@yearly /usr/bin/annual-report\n@annually /usr/bin/audit",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].schedule).toBe("0 0 1 1 *");
+      expect(tasks[1].schedule).toBe("0 0 1 1 *");
+    });
+
+    it("parses @midnight shortcut", async () => {
+      mockExecByCommand({
+        "crontab -l": "@midnight /usr/bin/nightly-job",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("0 0 * * *");
+    });
+
+    it("handles @reboot gracefully with undefined nextRun", async () => {
+      mockExecByCommand({
+        "crontab -l": "@reboot /usr/bin/startup-script",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("@reboot");
+      expect(tasks[0].command).toBe("/usr/bin/startup-script");
+      expect(tasks[0].nextRun).toBeUndefined();
+    });
+
+    it("handles mixed @-shortcuts and normal entries", async () => {
+      mockExecByCommand({
+        "crontab -l": [
+          "@daily /usr/bin/backup.sh",
+          "0 2 * * * /usr/bin/nightly",
+          "@reboot /usr/bin/startup",
+        ].join("\n"),
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(3);
+      expect(tasks[0].schedule).toBe("0 0 * * *");
+      expect(tasks[1].schedule).toBe("0 2 * * *");
+      expect(tasks[2].schedule).toBe("@reboot");
+    });
+
+    it("parses @-shortcuts in system crontab format (with user field)", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/crontab") {
+          return Promise.resolve("@daily root /usr/bin/sys-cleanup\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockRejectedValue(new Error("ENOENT"));
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("0 0 * * *");
+      expect(tasks[0].command).toBe("/usr/bin/sys-cleanup");
+      expect(tasks[0].metadata?.user).toBe("root");
+    });
+  });
+
   describe("scan — system crontabs", () => {
     it("parses /etc/crontab with system format (user field)", async () => {
       mockExecByCommand({

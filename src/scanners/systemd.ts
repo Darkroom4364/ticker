@@ -1,8 +1,9 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Scanner, ScanOptions, ScheduledTask } from "../types.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Parse the tabular output of `systemctl list-timers --all --no-pager`.
@@ -63,8 +64,8 @@ function parseTimerOutput(stdout: string): Array<{
 /** Try to get the calendar expression from a timer unit file */
 async function getTimerCalendar(unit: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execAsync(
-      `systemctl show ${unit} --property=TimersCalendar --no-pager`,
+    const { stdout } = await execFileAsync(
+      "systemctl", ["show", unit, "--property=TimersCalendar", "--no-pager"],
     );
     // Output format: TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 00:00:00 UTC }
     const match = stdout.match(/OnCalendar=([^;}\n]+)/);
@@ -78,8 +79,8 @@ async function getTimerCalendar(unit: string): Promise<string | undefined> {
 /** Try to get the description of a service unit */
 async function getServiceDescription(service: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execAsync(
-      `systemctl show ${service} --property=Description --no-pager`,
+    const { stdout } = await execFileAsync(
+      "systemctl", ["show", service, "--property=Description", "--no-pager"],
     );
     const match = stdout.match(/Description=(.+)/);
     if (match) return match[1].trim();

@@ -3,12 +3,14 @@ import type { ScanOptions } from "../src/types.js";
 
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
+  execFile: vi.fn(),
 }));
 
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { SystemdScanner } from "../src/scanners/systemd.js";
 
 const mockedExec = vi.mocked(exec);
+const mockedExecFile = vi.mocked(execFile);
 
 /** Helper to make exec resolve differently per command pattern */
 function mockExecByCommand(handlers: Record<string, string | Error>): void {
@@ -33,6 +35,30 @@ function mockExecByCommand(handlers: Record<string, string | Error>): void {
       stderr: "",
     });
     return undefined as ReturnType<typeof exec>;
+  });
+
+  // Mock execFile for systemctl show calls (getTimerCalendar and getServiceDescription)
+  mockedExecFile.mockImplementation((_cmd: unknown, args: unknown, callback: unknown) => {
+    const argList = args as string[];
+    const argStr = argList.join(" ");
+    for (const [key, value] of Object.entries(handlers)) {
+      if (argStr.includes(key)) {
+        if (value instanceof Error) {
+          (callback as (err: Error) => void)(value);
+        } else {
+          (callback as (err: null, result: { stdout: string; stderr: string }) => void)(null, {
+            stdout: value,
+            stderr: "",
+          });
+        }
+        return undefined as ReturnType<typeof execFile>;
+      }
+    }
+    (callback as (err: null, result: { stdout: string; stderr: string }) => void)(null, {
+      stdout: "",
+      stderr: "",
+    });
+    return undefined as ReturnType<typeof execFile>;
   });
 }
 
@@ -182,6 +208,32 @@ describe("SystemdScanner", () => {
       const tasks = await scanner.scan(defaultOptions);
       for (const task of tasks) {
         expect(task.source).toBe("systemd");
+      }
+    });
+
+    it("uses execFile (not exec) for systemctl show to prevent command injection", async () => {
+      const maliciousUnit = "evil$(rm -rf /).timer";
+      const timerOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      ${maliciousUnit}              evil.service
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": timerOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Evil",
+      });
+
+      await scanner.scan(defaultOptions);
+
+      // Verify execFile was called (not exec) for the show commands
+      // execFile passes arguments as an array, preventing shell injection
+      expect(mockedExecFile).toHaveBeenCalled();
+      const calls = mockedExecFile.mock.calls;
+      for (const call of calls) {
+        // First arg is the command, second is the args array
+        expect(call[0]).toBe("systemctl");
+        expect(Array.isArray(call[1])).toBe(true);
       }
     });
   });
