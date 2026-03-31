@@ -130,25 +130,24 @@ function computeNextRun(parsed: ParsedCron, now: Date): Date {
     }
 
     const dom = candidate.getDate();
+    const dow = candidate.getDay();
     const maxDom = daysInMonth(candidate.getFullYear(), month);
     const validDoms = parsed.dayOfMonth.values.filter((d) => d <= maxDom);
 
-    if (!validDoms.includes(dom)) {
-      const nextDom = validDoms.find((d) => d > dom);
-      if (nextDom !== undefined) {
-        candidate.setDate(nextDom);
-        candidate.setHours(0, 0, 0, 0);
-      } else {
-        // Move to first day of next month
-        candidate.setMonth(candidate.getMonth() + 1, 1);
-        candidate.setHours(0, 0, 0, 0);
-      }
-      continue;
-    }
+    // POSIX cron: when both day-of-month and day-of-week are restricted
+    // (non-wildcard), the job runs when EITHER matches (OR logic).
+    // When only one is restricted, use AND logic (the wildcard always matches).
+    const domRestricted = parsed.dayOfMonth.values.length < 31;
+    const dowRestricted = parsed.dayOfWeek.values.length < 7;
 
-    // Check day of week
-    const dow = candidate.getDay();
-    if (!parsed.dayOfWeek.values.includes(dow)) {
+    const domMatch = validDoms.includes(dom);
+    const dowMatch = parsed.dayOfWeek.values.includes(dow);
+
+    const dayMatch = domRestricted && dowRestricted
+      ? domMatch || dowMatch
+      : domMatch && dowMatch;
+
+    if (!dayMatch) {
       candidate.setDate(candidate.getDate() + 1);
       candidate.setHours(0, 0, 0, 0);
       continue;
@@ -351,8 +350,13 @@ export function getNextCronRun(expr: string, now?: Date): Date {
 export function parseCronExpression(
   expr: string,
   now?: Date
-): { nextRun: Date; interval: string } {
+): { nextRun: Date | undefined; interval: string } {
   const interval = describeCronExpression(expr);
+
+  if (expr.trim().toLowerCase() === "@reboot") {
+    return { nextRun: undefined, interval };
+  }
+
   const nextRun = getNextCronRun(expr, now);
   return { nextRun, interval };
 }

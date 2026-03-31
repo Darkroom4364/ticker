@@ -168,6 +168,60 @@ describe("parseCronExpression", () => {
   });
 });
 
+describe("POSIX day-of-month OR day-of-week semantics", () => {
+  it("uses OR logic when both dom and dow are restricted", () => {
+    // '0 0 15 * 1' = midnight on the 15th OR any Monday
+    // NOW is 2025-06-15 (Sunday). Next match should be 2025-06-16 (Monday),
+    // NOT the next date that is both the 15th AND a Monday.
+    const next = getNextCronRun("0 0 15 * 1", NOW);
+    // Should be Monday June 16, 2025 at midnight
+    expect(next.getDay()).toBe(1); // Monday
+    expect(next.getDate()).toBe(16);
+    expect(next.getMonth()).toBe(5); // June
+    expect(next.getHours()).toBe(0);
+  });
+
+  it("fires on the 15th even if it is not a Monday (OR logic)", () => {
+    // From a date before July 15, the 15th should match regardless of dow
+    const beforeJuly15 = new Date(2025, 6, 14, 12, 0, 0); // July 14 2025 (Monday)
+    const next = getNextCronRun("0 0 15 * 1", beforeJuly15);
+    // July 15 2025 is a Tuesday — should still fire because dom=15 matches
+    expect(next.getDate()).toBe(15);
+    expect(next.getMonth()).toBe(6); // July
+  });
+
+  it("uses AND logic when only dom is restricted (dow is wildcard)", () => {
+    // '0 0 15 * *' = midnight on the 15th of every month
+    const next = getNextCronRun("0 0 15 * *", NOW);
+    expect(next.getDate()).toBe(15);
+    expect(next.getMonth()).toBe(6); // July (June 15 is today, so next is July 15)
+  });
+
+  it("uses AND logic when only dow is restricted (dom is wildcard)", () => {
+    // '0 9 * * 1' = 9 AM every Monday
+    const next = getNextCronRun("0 9 * * 1", NOW);
+    expect(next.getDay()).toBe(1); // Monday
+  });
+});
+
+describe("@reboot handling", () => {
+  it("parseCronExpression returns undefined nextRun for @reboot", () => {
+    const result = parseCronExpression("@reboot");
+    expect(result.nextRun).toBeUndefined();
+    expect(result.interval).toBe("At system reboot");
+  });
+
+  it("getNextCronRun still throws for @reboot", () => {
+    expect(() => getNextCronRun("@reboot")).toThrow(
+      "Cannot compute next run for @reboot"
+    );
+  });
+
+  it("describeCronExpression handles @reboot", () => {
+    expect(describeCronExpression("@reboot")).toBe("At system reboot");
+  });
+});
+
 describe("edge cases", () => {
   it("handles ranges", () => {
     const result = parseCronExpression("0 9 * * 1-5", NOW);
