@@ -22,6 +22,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src/",
+    "format": "prettier --check src/",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -36,13 +38,17 @@
     "node": ">=20"
   },
   "devDependencies": {
-"@types/node": "^25.5.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.5.0",
+    "eslint": "^10.1.0",
+    "prettier": "^3.8.1",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.58.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-eventbridge": "^3.1021.0",
     "commander": "^13.0.0",
-"yaml": "^2.8.3"
+    "yaml": "^2.8.3"
   }
 }
