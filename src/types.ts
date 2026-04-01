@@ -27,7 +27,14 @@ export interface ScanOptions {
 export interface Scanner {
   /** Display name of this scanner */
   name: string;
-  /** Discover scheduled tasks from this source */
+  /**
+   * Discover scheduled tasks from this source.
+   *
+   * May throw on unexpected errors. When a scanner collects partial
+   * results before encountering a failure, it should throw a
+   * {@link PartialScanError} so the orchestrator can include the
+   * partial tasks while still surfacing the error as a warning.
+   */
   scan(options: ScanOptions): Promise<ScheduledTask[]>;
   /** Check whether this scanner can run in the current environment */
   isAvailable(): Promise<boolean>;

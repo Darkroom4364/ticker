@@ -106,6 +106,31 @@ describe("schedex CLI", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("exits with code 1 when all scanners fail", () => {
+    // Runs a fixture that creates a scanner which always throws,
+    // then exercises the same allFailed → exit(1) logic as
+    // src/cli.ts:47. We can't trigger this from the real CLI because
+    // unavailable scanners are skipped (no error), not failed.
+    const fixturePath = resolve(
+      import.meta.dirname,
+      "fixtures/all-fail-cli.mjs"
+    );
+    try {
+      execFileSync(NODE_PATH, [fixturePath], {
+        encoding: "utf-8",
+        timeout: 10000,
+        env: {
+          PATH: MINIMAL_PATH,
+          HOME: "/nonexistent",
+        },
+      });
+      expect.fail("Should have exited with code 1");
+    } catch (error: unknown) {
+      const err = error as { status?: number };
+      expect(err.status).toBe(1);
+    }
+  });
+
   it("exits with code 0 when no scanners match filter (empty results)", () => {
     const { exitCode } = run("scan", "--scanners", "nonexistent");
     // No scanners ran → results.length === 0 → not allFailed → exit 0
