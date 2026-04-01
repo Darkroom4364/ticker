@@ -1,19 +1,25 @@
 # Ticker
 
+![CI](https://github.com/Darkroom4364/ticker/actions/workflows/ci.yml/badge.svg)
+[![npm](https://img.shields.io/npm/v/@darkroom4364/ticker)](https://www.npmjs.com/package/@darkroom4364/ticker)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+
 Discover every scheduled job across your infrastructure from a single CLI.
 
 Ticker scans crontabs, systemd timers, Kubernetes CronJobs, AWS EventBridge rules, and GitHub Actions workflows — then presents them in a unified view.
 
+> **Requires Node.js >= 20**
+
 ## Installation
 
 ```bash
-npx ticker scan
+npx @darkroom4364/ticker scan
 ```
 
 Or install globally:
 
 ```bash
-npm install -g ticker
+npm install -g @darkroom4364/ticker
 ticker scan
 ```
 
@@ -53,10 +59,10 @@ Each scanner checks availability first (e.g., is `kubectl` installed? do AWS cre
 ### Table (default)
 
 ```
- Source      │ Name            │ Schedule    │ Next Run              │ Command
-─────────────┼─────────────────┼─────────────┼───────────────────────┼──────────────
- crontab     │ backup          │ 0 2 * * *   │ 6/16/2025, 2:00:00 AM │ /usr/bin/backup.sh
- kubernetes  │ prod/daily-etl  │ 0 3 * * *   │ 6/16/2025, 3:00:00 AM │ myregistry/etl:v2
+ Source      │ Name            │ Schedule    │ Next Run                  │ Command
+─────────────┼─────────────────┼─────────────┼───────────────────────────┼──────────────
+ crontab     │ backup          │ 0 2 * * *   │ 2025-06-16T02:00:00.000Z  │ /usr/bin/backup.sh
+ kubernetes  │ prod/daily-etl  │ 0 3 * * *   │ 2025-06-16T03:00:00.000Z  │ myregistry/etl:v2
 ```
 
 ### JSON
@@ -65,10 +71,46 @@ Each scanner checks availability first (e.g., is `kubectl` installed? do AWS cre
 ticker scan --format json
 ```
 
+```json
+[
+  {
+    "name": "backup",
+    "schedule": "0 2 * * *",
+    "source": "crontab",
+    "nextRun": "2025-06-16T02:00:00.000Z",
+    "interval": "Every day at 2:00 AM",
+    "command": "/usr/bin/backup.sh"
+  },
+  {
+    "name": "prod/daily-etl",
+    "schedule": "0 3 * * *",
+    "source": "kubernetes",
+    "nextRun": "2025-06-16T03:00:00.000Z",
+    "interval": "Every day at 3:00 AM",
+    "command": "myregistry/etl:v2"
+  }
+]
+```
+
 ### YAML
 
 ```bash
 ticker scan --format yaml
+```
+
+```yaml
+- name: backup
+  schedule: 0 2 * * *
+  source: crontab
+  nextRun: 2025-06-16T02:00:00.000Z
+  interval: Every day at 2:00 AM
+  command: /usr/bin/backup.sh
+- name: prod/daily-etl
+  schedule: 0 3 * * *
+  source: kubernetes
+  nextRun: 2025-06-16T03:00:00.000Z
+  interval: Every day at 3:00 AM
+  command: myregistry/etl:v2
 ```
 
 ## Options
