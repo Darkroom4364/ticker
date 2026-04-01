@@ -36,15 +36,13 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.5.0",
+"@types/node": "^25.5.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-eventbridge": "^3.1021.0",
     "commander": "^13.0.0",
-    "js-yaml": "^4.1.1",
-    "yaml": "^2.8.3"
+"yaml": "^2.8.3"
   }
 }
