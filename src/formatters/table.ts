@@ -12,7 +12,7 @@ const COLUMNS: Column[] = [
   {
     header: "Next Run",
     getValue: (t) =>
-      t.nextRun ? t.nextRun.toLocaleString() : "N/A",
+      t.nextRun ? t.nextRun.toISOString() : "N/A",
   },
   { header: "Command", getValue: (t) => t.command ?? "" },
 ];
