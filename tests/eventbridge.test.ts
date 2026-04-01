@@ -202,25 +202,29 @@ describe("EventBridgeScanner", () => {
       expect(tasks[0].name).toBe("scheduled-rule");
     });
 
-    it("returns empty array on AWS API error (first page)", async () => {
+    it("throws on AWS API error when no tasks were collected", async () => {
       const client = createMockClient(
         [],
         new Error("UnrecognizedClientException")
       );
       scanner = new EventBridgeScanner(client);
 
-      const tasks = await scanner.scan(defaultOptions);
-      expect(tasks).toHaveLength(0);
+      await expect(scanner.scan(defaultOptions)).rejects.toThrow(
+        "UnrecognizedClientException"
+      );
     });
 
-    it("preserves collected tasks when pagination fails mid-way", async () => {
-      // Page 1 succeeds with a rule, page 2 fails
+    it("throws PartialScanError with collected tasks on mid-pagination failure", async () => {
+      // Page 1 succeeds with a rule, page 2 fails.
+      // Scanner should throw PartialScanError so the orchestrator can
+      // both surface the warning AND include the partial tasks.
+      const { PartialScanError } = await import("../src/types.js");
+
       const client = {
         send: vi.fn(),
       } as unknown as EventBridgeClient;
       const sendMock = vi.mocked(client.send);
 
-      // First call returns one rule with NextToken
       sendMock.mockResolvedValueOnce({
         Rules: [
           {
@@ -231,15 +235,20 @@ describe("EventBridgeScanner", () => {
         ],
         NextToken: "page2",
       });
-      // Second call fails
       sendMock.mockRejectedValueOnce(new Error("Transient failure"));
 
       scanner = new EventBridgeScanner(client);
-      const tasks = await scanner.scan(defaultOptions);
 
-      // Should return the task from page 1, not empty array
-      expect(tasks).toHaveLength(1);
-      expect(tasks[0].name).toBe("survived-rule");
+      try {
+        await scanner.scan(defaultOptions);
+        expect.fail("Should have thrown PartialScanError");
+      } catch (error) {
+        expect(error).toBeInstanceOf(PartialScanError);
+        const partial = error as InstanceType<typeof PartialScanError>;
+        expect(partial.tasks).toHaveLength(1);
+        expect(partial.tasks[0].name).toBe("survived-rule");
+        expect(partial.message).toBe("Transient failure");
+      }
     });
 
     it("rejects malformed AWS cron with wrong field count", async () => {

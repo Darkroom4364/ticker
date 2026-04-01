@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { PartialScanError } from "../src/types.js";
 import type { Scanner, ScanOptions, ScheduledTask } from "../src/types.js";
 import { orchestrate } from "../src/orchestrator.js";
 
@@ -164,6 +165,23 @@ describe("orchestrate", () => {
     expect(tasks).toHaveLength(0);
   });
 
+  it("all-failed: every result has error when all scanners fail", async () => {
+    const bad1 = createMockScanner("bad-1", [], {
+      error: new Error("fail-1"),
+    });
+    const bad2 = createMockScanner("bad-2", [], {
+      error: new Error("fail-2"),
+    });
+
+    const { tasks, results } = await orchestrate({}, [bad1, bad2]);
+
+    expect(tasks).toHaveLength(0);
+    expect(results).toHaveLength(2);
+    // This is the condition src/cli.ts:48 checks for exit code 1
+    const allFailed = results.length > 0 && results.every((r) => r.error);
+    expect(allFailed).toBe(true);
+  });
+
   it("shows verbose output for failed scanners", async () => {
     const stderrSpy = vi.spyOn(process.stderr, "write");
     const bad = createMockScanner("failing-scanner", [], {
@@ -174,6 +192,28 @@ describe("orchestrate", () => {
 
     expect(stderrSpy).toHaveBeenCalledWith(
       expect.stringContaining("[failing-scanner] FAILED (connection refused)")
+    );
+  });
+
+  it("extracts partial tasks from PartialScanError and still reports error", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write");
+    const partialScanner: Scanner = {
+      name: "partial",
+      isAvailable: vi.fn().mockResolvedValue(true),
+      scan: vi.fn().mockRejectedValue(
+        new PartialScanError("page 2 failed", [TASK_A])
+      ),
+    };
+
+    const { tasks, results } = await orchestrate({}, [partialScanner]);
+
+    // Should include the partial task
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].name).toBe("task-a");
+    // Should also report the error
+    expect(results[0].error).toBe("page 2 failed");
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Warning: Scanner 'partial' failed: page 2 failed")
     );
   });
 

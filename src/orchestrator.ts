@@ -1,3 +1,4 @@
+import { PartialScanError } from "./types.js";
 import type { Scanner, ScanOptions, ScheduledTask } from "./types.js";
 import {
   CrontabScanner,
@@ -66,9 +67,12 @@ export async function orchestrate(
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      // PartialScanError carries tasks collected before the failure
+      const partialTasks =
+        error instanceof PartialScanError ? error.tasks : [];
       return {
         scanner: scanner.name,
-        tasks: [],
+        tasks: partialTasks,
         error: message,
         durationMs: Date.now() - start,
       };

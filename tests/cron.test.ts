@@ -234,12 +234,10 @@ describe("Sunday = 7 convention", () => {
     expect(nextWith0.getTime()).toBe(nextWith7.getTime());
   });
 
-  it("handles ranges including 7", () => {
-    // 5-7 should mean Friday, Saturday, Sunday
+  it("handles ranges including 7 with correct weekday ordering", () => {
+    // 5-7 should mean Friday, Saturday, Sunday — in that order
     const result = describeCronExpression("0 9 * * 5-7");
-    expect(result).toContain("Friday");
-    expect(result).toContain("Saturday");
-    expect(result).toContain("Sunday");
+    expect(result).toBe("Every Friday, Saturday, Sunday at 9 AM");
   });
 
   it("handles mixed 0 and 7 in lists (deduplicates Sunday)", () => {

@@ -3,6 +3,7 @@ import {
   ListRulesCommand,
   type Rule,
 } from "@aws-sdk/client-eventbridge";
+import { PartialScanError } from "../types.js";
 import type { Scanner, ScanOptions, ScheduledTask } from "../types.js";
 import { parseCronExpression } from "../utils/cron.js";
 
@@ -100,10 +101,19 @@ export class EventBridgeScanner implements Scanner {
 
         nextToken = response.NextToken;
       } while (nextToken);
-    } catch {
-      // Return whatever we collected before the failure.
-      // If the first call failed, tasks will be empty.
-      return tasks;
+    } catch (error: unknown) {
+      if (tasks.length > 0) {
+        // Partial results collected before failure — attach them to the
+        // error so the orchestrator can both surface the warning AND
+        // return the tasks that were successfully fetched.
+        const partialError = new PartialScanError(
+          error instanceof Error ? error.message : String(error),
+          tasks,
+        );
+        throw partialError;
+      }
+      // Total failure (no tasks collected) — rethrow as-is
+      throw error;
     }
 
     return tasks;

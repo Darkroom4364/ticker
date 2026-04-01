@@ -1,4 +1,5 @@
 export type { ScheduledTask, ScanOptions, Scanner } from "./types.js";
+export { PartialScanError } from "./types.js";
 export {
   parseCronExpression,
   describeCronExpression,

@@ -89,10 +89,17 @@ function parseCronFields(expr: string): ParsedCron {
     );
   }
 
-  // Parse day-of-week and normalize 7 → 0 (both mean Sunday)
+  // Parse day-of-week and normalize 7 → 0 (both mean Sunday).
+  // Preserve numeric order so 5-7 becomes [0,5,6] (Sun, Fri, Sat)
+  // which sorts correctly for schedule matching. Display functions
+  // handle the human-readable ordering separately.
   const dow = parseField(fields[4], FIELD_RANGES[4].min, FIELD_RANGES[4].max);
+  const normalizedValues = new Set<number>();
+  for (const v of dow.values) {
+    normalizedValues.add(v === 7 ? 0 : v);
+  }
   const normalizedDow: CronField = {
-    values: [...new Set(dow.values.map((v) => (v === 7 ? 0 : v)))].sort((a, b) => a - b),
+    values: [...normalizedValues].sort((a, b) => a - b),
   };
 
   return {
@@ -268,7 +275,7 @@ export function describeCronExpression(expr: string): string {
 
   // Specific time on specific days of week
   if (allDoms && allMonths && !allDows && parsed.hour.values.length === 1 && parsed.minute.values.length === 1) {
-    const days = parsed.dayOfWeek.values.map((d) => DAY_NAMES[d]).join(", ");
+    const days = sortDowForDisplay(parsed.dayOfWeek.values).map((d) => DAY_NAMES[d]).join(", ");
     return `Every ${days} at ${formatTime(parsed.hour.values[0], parsed.minute.values[0])}`;
   }
 
@@ -301,6 +308,21 @@ function getOrdinalSuffix(n: number): string {
   return "th";
 }
 
+/**
+ * Sort day-of-week values for human-readable display.
+ * Weekday order: Mon(1)–Sat(6), then Sun(0) at the end.
+ * This ensures "5-7" (Fri, Sat, Sun) renders in natural order
+ * rather than "Sunday, Friday, Saturday".
+ */
+function sortDowForDisplay(values: number[]): number[] {
+  return [...values].sort((a, b) => {
+    // Map 0 (Sunday) to 7 for sorting so it comes after Saturday
+    const aKey = a === 0 ? 7 : a;
+    const bKey = b === 0 ? 7 : b;
+    return aKey - bKey;
+  });
+}
+
 function buildGenericDescription(parsed: ParsedCron): string {
   const parts: string[] = [];
 
@@ -324,7 +346,7 @@ function buildGenericDescription(parsed: ParsedCron): string {
   }
 
   if (parsed.dayOfWeek.values.length < 7) {
-    const days = parsed.dayOfWeek.values.map((d) => DAY_NAMES[d]);
+    const days = sortDowForDisplay(parsed.dayOfWeek.values).map((d) => DAY_NAMES[d]);
     parts.push(`on ${days.join(", ")}`);
   }
 

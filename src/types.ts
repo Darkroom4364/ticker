@@ -32,3 +32,17 @@ export interface Scanner {
   /** Check whether this scanner can run in the current environment */
   isAvailable(): Promise<boolean>;
 }
+
+/**
+ * Thrown when a scanner collects partial results before encountering an error.
+ * The orchestrator extracts the partial tasks and still surfaces the warning.
+ */
+export class PartialScanError extends Error {
+  constructor(
+    message: string,
+    public readonly tasks: ScheduledTask[],
+  ) {
+    super(message);
+    this.name = "PartialScanError";
+  }
+}

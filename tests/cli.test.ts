@@ -106,6 +106,12 @@ describe("schedex CLI", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("exits with code 0 when no scanners match filter (empty results)", () => {
+    const { exitCode } = run("scan", "--scanners", "nonexistent");
+    // No scanners ran → results.length === 0 → not allFailed → exit 0
+    expect(exitCode).toBe(0);
+  });
+
   it("scan --verbose writes scanner details to stderr", () => {
     // execFileSync only captures stderr on failure, so use execSync
     // with combined output to verify verbose flag works
