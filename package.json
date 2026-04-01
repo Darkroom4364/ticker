@@ -1,12 +1,12 @@
 {
-  "name": "@darkroom4364/ticker",
+  "name": "schedex",
   "version": "0.1.0",
   "description": "CLI that discovers every scheduled job across infrastructure",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "ticker": "./dist/cli.js"
+    "schedex": "./dist/cli.js"
   },
   "files": [
     "dist"

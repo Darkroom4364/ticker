@@ -1,6 +1,6 @@
-# Contributing to Ticker
+# Contributing to schedex
 
-Thanks for your interest in contributing to Ticker! This guide covers everything you need to get started.
+Thanks for your interest in contributing to schedex! This guide covers everything you need to get started.
 
 ## Prerequisites
 

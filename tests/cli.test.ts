@@ -11,7 +11,7 @@ function run(...args: string[]): string {
   });
 }
 
-describe("ticker CLI", () => {
+describe("schedex CLI", () => {
   it("prints version with --version", () => {
     const output = run("--version");
     expect(output.trim()).toBe("0.1.0");
@@ -19,7 +19,7 @@ describe("ticker CLI", () => {
 
   it("prints help with --help", () => {
     const output = run("--help");
-    expect(output).toContain("ticker");
+    expect(output).toContain("schedex");
     expect(output).toContain("scan");
   });
 

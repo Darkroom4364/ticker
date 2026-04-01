@@ -1,45 +1,45 @@
-# Ticker
+# schedex
 
 ![CI](https://github.com/Darkroom4364/ticker/actions/workflows/ci.yml/badge.svg)
-[![npm](https://img.shields.io/npm/v/@darkroom4364/ticker)](https://www.npmjs.com/package/@darkroom4364/ticker)
+[![npm](https://img.shields.io/npm/v/schedex)](https://www.npmjs.com/package/schedex)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 Discover every scheduled job across your infrastructure from a single CLI.
 
-Ticker scans crontabs, systemd timers, Kubernetes CronJobs, AWS EventBridge rules, and GitHub Actions workflows — then presents them in a unified view.
+schedex scans crontabs, systemd timers, Kubernetes CronJobs, AWS EventBridge rules, and GitHub Actions workflows — then presents them in a unified view.
 
 > **Requires Node.js >= 20**
 
 ## Installation
 
 ```bash
-npx @darkroom4364/ticker scan
+npx schedex scan
 ```
 
 Or install globally:
 
 ```bash
-npm install -g @darkroom4364/ticker
-ticker scan
+npm install -g schedex
+schedex scan
 ```
 
 ## Usage
 
 ```bash
 # Scan all available sources and display as a table
-ticker scan
+schedex scan
 
 # Output as JSON
-ticker scan --format json
+schedex scan --format json
 
 # Output as YAML
-ticker scan --format yaml
+schedex scan --format yaml
 
 # Scan only specific sources
-ticker scan --scanners crontab,kubernetes
+schedex scan --scanners crontab,kubernetes
 
 # Show scanner timing and error details
-ticker scan --verbose
+schedex scan --verbose
 ```
 
 ## Scanners
@@ -68,7 +68,7 @@ Each scanner checks availability first (e.g., is `kubectl` installed? do AWS cre
 ### JSON
 
 ```bash
-ticker scan --format json
+schedex scan --format json
 ```
 
 ```json
@@ -95,7 +95,7 @@ ticker scan --format json
 ### YAML
 
 ```bash
-ticker scan --format yaml
+schedex scan --format yaml
 ```
 
 ```yaml
@@ -128,4 +128,4 @@ ticker scan --format yaml
 
 ## License
 
-APACHE 2.0
+Apache 2.0

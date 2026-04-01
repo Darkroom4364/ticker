@@ -7,7 +7,7 @@ import { format } from "./formatters/index.js";
 const program = new Command();
 
 program
-  .name("ticker")
+  .name("schedex")
   .description("Discover every scheduled job across your infrastructure")
   .version("0.1.0");
 
