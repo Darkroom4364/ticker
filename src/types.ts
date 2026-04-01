@@ -11,6 +11,8 @@ export interface ScheduledTask {
   interval?: string;
   /** The command or action that runs */
   command?: string;
+  /** Human-readable description of the task */
+  description?: string;
   /** Additional scanner-specific metadata */
   metadata?: Record<string, string>;
 }

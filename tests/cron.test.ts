@@ -222,6 +222,33 @@ describe("@reboot handling", () => {
   });
 });
 
+describe("Sunday = 7 convention", () => {
+  it("accepts 7 as Sunday and normalizes to 0", () => {
+    const next = getNextCronRun("0 0 * * 7", NOW);
+    expect(next.getDay()).toBe(0); // Sunday
+  });
+
+  it("treats 0 and 7 identically for Sunday", () => {
+    const nextWith0 = getNextCronRun("0 9 * * 0", NOW);
+    const nextWith7 = getNextCronRun("0 9 * * 7", NOW);
+    expect(nextWith0.getTime()).toBe(nextWith7.getTime());
+  });
+
+  it("handles ranges including 7", () => {
+    // 5-7 should mean Friday, Saturday, Sunday
+    const result = describeCronExpression("0 9 * * 5-7");
+    expect(result).toContain("Friday");
+    expect(result).toContain("Saturday");
+    expect(result).toContain("Sunday");
+  });
+
+  it("handles mixed 0 and 7 in lists (deduplicates Sunday)", () => {
+    // 0,7 both mean Sunday — should produce one Sunday, not two
+    const result = describeCronExpression("0 9 * * 0,7");
+    expect(result).toBe("Every Sunday at 9 AM");
+  });
+});
+
 describe("edge cases", () => {
   it("handles ranges", () => {
     const result = parseCronExpression("0 9 * * 1-5", NOW);
@@ -256,6 +283,61 @@ describe("edge cases", () => {
 
   it("rejects invalid expressions — bad range", () => {
     expect(() => parseCronExpression("* 25 * * *")).toThrow();
+  });
+
+  it("rejects step value of 0", () => {
+    expect(() => parseCronExpression("*/0 * * * *")).toThrow(/Invalid step/);
+  });
+
+  it("rejects reversed range (start > end)", () => {
+    expect(() => parseCronExpression("* * * * 5-1")).toThrow(/Invalid range/);
+  });
+
+  it("handles February 29 / leap year", () => {
+    // From Jan 1 2024 (leap year), next Feb 29 should be 2024
+    const jan2024 = new Date(2024, 0, 1, 0, 0, 0);
+    const next = getNextCronRun("0 0 29 2 *", jan2024);
+    expect(next.getFullYear()).toBe(2024);
+    expect(next.getMonth()).toBe(1); // February
+    expect(next.getDate()).toBe(29);
+  });
+
+  it("skips to next leap year for Feb 29 from non-leap year", () => {
+    // From March 2025 (not a leap year), next Feb 29 is 2028
+    const mar2025 = new Date(2025, 2, 1, 0, 0, 0);
+    const next = getNextCronRun("0 0 29 2 *", mar2025);
+    expect(next.getFullYear()).toBe(2028);
+    expect(next.getMonth()).toBe(1);
+    expect(next.getDate()).toBe(29);
+  });
+
+  it("produces generic description for complex expressions", () => {
+    // Multiple values in minute and hour — falls through to buildGenericDescription
+    const result = describeCronExpression("0,30 2,14 * * *");
+    expect(result).toContain("minute");
+    expect(result).toContain("hour");
+  });
+
+  it("ordinal suffixes: 2nd, 3rd, 11th, 12th, 13th, 21st, 22nd, 23rd", () => {
+    expect(describeCronExpression("0 0 2 * *")).toContain("2nd");
+    expect(describeCronExpression("0 0 3 * *")).toContain("3rd");
+    expect(describeCronExpression("0 0 11 * *")).toContain("11th");
+    expect(describeCronExpression("0 0 12 * *")).toContain("12th");
+    expect(describeCronExpression("0 0 13 * *")).toContain("13th");
+    expect(describeCronExpression("0 0 21 * *")).toContain("21st");
+    expect(describeCronExpression("0 0 22 * *")).toContain("22nd");
+    expect(describeCronExpression("0 0 23 * *")).toContain("23rd");
+  });
+
+  it("formats PM times correctly", () => {
+    expect(describeCronExpression("0 14 * * *")).toBe("Every day at 2 PM");
+    expect(describeCronExpression("0 12 * * *")).toBe("Every day at 12 PM");
+    expect(describeCronExpression("30 23 * * *")).toBe("Every day at 11:30 PM");
+  });
+
+  it("named shortcuts are case-insensitive", () => {
+    expect(describeCronExpression("@Daily")).toBe("Every day at 12 AM");
+    expect(describeCronExpression("@HOURLY")).toBe("Every hour");
   });
 
   it("handles day 15 of specific month", () => {

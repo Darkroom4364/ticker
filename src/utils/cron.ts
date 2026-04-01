@@ -32,7 +32,7 @@ const FIELD_RANGES: { min: number; max: number }[] = [
   { min: 0, max: 23 },  // hour
   { min: 1, max: 31 },  // day of month
   { min: 1, max: 12 },  // month
-  { min: 0, max: 6 },   // day of week (0 = Sunday)
+  { min: 0, max: 7 },   // day of week (0 and 7 = Sunday)
 ];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -89,12 +89,18 @@ function parseCronFields(expr: string): ParsedCron {
     );
   }
 
+  // Parse day-of-week and normalize 7 → 0 (both mean Sunday)
+  const dow = parseField(fields[4], FIELD_RANGES[4].min, FIELD_RANGES[4].max);
+  const normalizedDow: CronField = {
+    values: [...new Set(dow.values.map((v) => (v === 7 ? 0 : v)))].sort((a, b) => a - b),
+  };
+
   return {
     minute: parseField(fields[0], FIELD_RANGES[0].min, FIELD_RANGES[0].max),
     hour: parseField(fields[1], FIELD_RANGES[1].min, FIELD_RANGES[1].max),
     dayOfMonth: parseField(fields[2], FIELD_RANGES[2].min, FIELD_RANGES[2].max),
     month: parseField(fields[3], FIELD_RANGES[3].min, FIELD_RANGES[3].max),
-    dayOfWeek: parseField(fields[4], FIELD_RANGES[4].min, FIELD_RANGES[4].max),
+    dayOfWeek: normalizedDow,
   };
 }
 

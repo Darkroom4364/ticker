@@ -135,10 +135,10 @@ export class SystemdScanner implements Scanner {
           nextRun,
           interval: calendar ?? undefined,
           command: timer.activates || undefined,
+          description,
           metadata: {
             unit: timer.unit,
             ...(timer.activates ? { activates: timer.activates } : {}),
-            ...(description ? { description } : {}),
           },
         };
 

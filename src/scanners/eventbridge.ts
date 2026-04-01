@@ -84,8 +84,8 @@ export class EventBridgeScanner implements Scanner {
   async scan(_options: ScanOptions): Promise<ScheduledTask[]> {
     const tasks: ScheduledTask[] = [];
 
+    let nextToken: string | undefined;
     try {
-      let nextToken: string | undefined;
       do {
         const response = await this.client.send(
           new ListRulesCommand({ NextToken: nextToken })
@@ -101,8 +101,9 @@ export class EventBridgeScanner implements Scanner {
         nextToken = response.NextToken;
       } while (nextToken);
     } catch {
-      // AWS credentials missing, no config, API errors — return empty
-      return [];
+      // Return whatever we collected before the failure.
+      // If the first call failed, tasks will be empty.
+      return tasks;
     }
 
     return tasks;

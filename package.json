@@ -13,12 +13,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Darkroom4364/ticker"
+    "url": "https://github.com/Darkroom4364/schedex"
   },
   "author": "Darkroom4364",
-  "homepage": "https://github.com/Darkroom4364/ticker",
+  "homepage": "https://github.com/Darkroom4364/schedex",
   "bugs": {
-    "url": "https://github.com/Darkroom4364/ticker/issues"
+    "url": "https://github.com/Darkroom4364/schedex/issues"
   },
   "scripts": {
     "build": "tsc",

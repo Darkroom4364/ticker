@@ -202,7 +202,7 @@ describe("EventBridgeScanner", () => {
       expect(tasks[0].name).toBe("scheduled-rule");
     });
 
-    it("returns empty array on AWS API error", async () => {
+    it("returns empty array on AWS API error (first page)", async () => {
       const client = createMockClient(
         [],
         new Error("UnrecognizedClientException")
@@ -211,6 +211,75 @@ describe("EventBridgeScanner", () => {
 
       const tasks = await scanner.scan(defaultOptions);
       expect(tasks).toHaveLength(0);
+    });
+
+    it("preserves collected tasks when pagination fails mid-way", async () => {
+      // Page 1 succeeds with a rule, page 2 fails
+      const client = {
+        send: vi.fn(),
+      } as unknown as EventBridgeClient;
+      const sendMock = vi.mocked(client.send);
+
+      // First call returns one rule with NextToken
+      sendMock.mockResolvedValueOnce({
+        Rules: [
+          {
+            Name: "survived-rule",
+            ScheduleExpression: "rate(1 hour)",
+            EventBusName: "default",
+          },
+        ],
+        NextToken: "page2",
+      });
+      // Second call fails
+      sendMock.mockRejectedValueOnce(new Error("Transient failure"));
+
+      scanner = new EventBridgeScanner(client);
+      const tasks = await scanner.scan(defaultOptions);
+
+      // Should return the task from page 1, not empty array
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("survived-rule");
+    });
+
+    it("rejects malformed AWS cron with wrong field count", async () => {
+      const client = createMockClient([
+        {
+          Rules: [
+            {
+              Name: "bad-cron",
+              ScheduleExpression: "cron(* * * *)",
+              EventBusName: "default",
+            },
+          ],
+        },
+      ]);
+      scanner = new EventBridgeScanner(client);
+
+      const tasks = await scanner.scan(defaultOptions);
+      // Should skip the rule with bad cron, not crash
+      expect(tasks).toHaveLength(1);
+      // Task should exist but without nextRun/interval since cron failed
+      expect(tasks[0].name).toBe("bad-cron");
+    });
+
+    it("handles invalid rate expression gracefully", async () => {
+      const client = createMockClient([
+        {
+          Rules: [
+            {
+              Name: "bad-rate",
+              ScheduleExpression: "rate(not-a-number things)",
+              EventBusName: "default",
+            },
+          ],
+        },
+      ]);
+      scanner = new EventBridgeScanner(client);
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("bad-rate");
     });
 
     it("returns empty array when no rules exist", async () => {

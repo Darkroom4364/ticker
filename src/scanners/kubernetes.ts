@@ -93,8 +93,8 @@ export class KubernetesScanner implements Scanner {
             nextRun,
             interval,
             command: image,
+            description,
             metadata: taskMetadata,
-            ...(description ? { description } : {}),
           };
 
           tasks.push(task);

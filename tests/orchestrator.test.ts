@@ -164,6 +164,56 @@ describe("orchestrate", () => {
     expect(tasks).toHaveLength(0);
   });
 
+  it("shows verbose output for failed scanners", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write");
+    const bad = createMockScanner("failing-scanner", [], {
+      error: new Error("connection refused"),
+    });
+
+    await orchestrate({ verbose: true }, [bad]);
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[failing-scanner] FAILED (connection refused)")
+    );
+  });
+
+  it("handles isAvailable() throwing an error", async () => {
+    const throwingScanner: Scanner = {
+      name: "throwing",
+      isAvailable: vi.fn().mockRejectedValue(new Error("unexpected")),
+      scan: vi.fn().mockResolvedValue([]),
+    };
+
+    const { tasks, results } = await orchestrate({}, [throwingScanner]);
+
+    expect(tasks).toHaveLength(0);
+    expect(results[0].error).toContain("unexpected");
+    expect(throwingScanner.scan).not.toHaveBeenCalled();
+  });
+
+  it("sorts two tasks with no nextRun stably", async () => {
+    const taskNoRun1: ScheduledTask = {
+      name: "no-run-1",
+      schedule: "@reboot",
+      source: "mock",
+      interval: "At system reboot",
+    };
+    const taskNoRun2: ScheduledTask = {
+      name: "no-run-2",
+      schedule: "@reboot",
+      source: "mock",
+      interval: "At system reboot",
+    };
+    const scanner = createMockScanner("mock", [taskNoRun1, taskNoRun2]);
+
+    const { tasks } = await orchestrate({}, [scanner]);
+
+    expect(tasks).toHaveLength(2);
+    // Both have no nextRun — should maintain original order (stable sort)
+    expect(tasks[0].name).toBe("no-run-1");
+    expect(tasks[1].name).toBe("no-run-2");
+  });
+
   it("runs scanners concurrently", async () => {
     const order: string[] = [];
     const slowScanner: Scanner = {
