@@ -6,6 +6,9 @@ import {
   KubernetesScanner,
   EventBridgeScanner,
   GitHubActionsScanner,
+  VercelScanner,
+  CloudflareScanner,
+  DockerCronScanner,
 } from "./scanners/index.js";
 
 export interface OrchestratorOptions extends ScanOptions {
@@ -27,6 +30,9 @@ function createAllScanners(): Scanner[] {
     new KubernetesScanner(),
     new EventBridgeScanner(),
     new GitHubActionsScanner(),
+    new VercelScanner(),
+    new CloudflareScanner(),
+    new DockerCronScanner(),
   ];
 }
 
