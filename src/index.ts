@@ -29,3 +29,7 @@ export {
   EventBridgeScanner,
   GitHubActionsScanner,
 } from "./scanners/index.js";
+
+// Watch
+export { watch, diffTasks, parseDuration, formatChanges } from "./watch.js";
+export type { WatchOptions, WatchChanges } from "./watch.js";
