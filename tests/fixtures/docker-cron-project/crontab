@@ -1,0 +1,5 @@
+# Docker crontab
+SHELL=/bin/sh
+
+*/5 * * * * /usr/local/bin/health-check
+0 2 * * * /app/scripts/backup.sh
