@@ -1,0 +1,9 @@
+name: Unusual Cron
+on:
+  schedule:
+    - cron: '*/10 2-4 * * *'
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "tick"
