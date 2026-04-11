@@ -5,3 +5,5 @@ export {
   describeCronExpression,
   getNextCronRun,
 } from "./utils/index.js";
+export { watch, diffTasks, parseDuration, formatChanges } from "./watch.js";
+export type { WatchOptions, WatchChanges } from "./watch.js";
