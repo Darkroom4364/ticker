@@ -309,6 +309,7 @@ describe("EventBridgeScanner", () => {
       const tasks = await scanner.scan(defaultOptions);
       expect(tasks).toHaveLength(1);
       expect(tasks[0].name).toBe("huge-rate");
+      expect(tasks[0].schedule).toBe("rate(999999999999 minutes)");
       expect(tasks[0].nextRun).toBeUndefined();
       expect(tasks[0].interval).toBeUndefined();
     });
@@ -331,6 +332,7 @@ describe("EventBridgeScanner", () => {
       const tasks = await scanner.scan(defaultOptions);
       expect(tasks).toHaveLength(1);
       expect(tasks[0].name).toBe("bad-unit");
+      expect(tasks[0].schedule).toBe("rate(5 millennia)");
       expect(tasks[0].nextRun).toBeUndefined();
       expect(tasks[0].interval).toBeUndefined();
     });
@@ -353,6 +355,7 @@ describe("EventBridgeScanner", () => {
       const tasks = await scanner.scan(defaultOptions);
       expect(tasks).toHaveLength(1);
       expect(tasks[0].name).toBe("zero-rate");
+      expect(tasks[0].schedule).toBe("rate(0 minutes)");
       expect(tasks[0].nextRun).toBeUndefined();
       expect(tasks[0].interval).toBeUndefined();
     });
