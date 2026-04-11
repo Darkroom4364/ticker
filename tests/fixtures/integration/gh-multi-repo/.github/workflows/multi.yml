@@ -1,0 +1,11 @@
+name: Multi Trigger
+on:
+  schedule:
+    - cron: '0 0 * * *'
+    - cron: '0 12 * * *'
+    - cron: '0 18 * * 5'
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello"
