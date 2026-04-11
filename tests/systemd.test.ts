@@ -165,6 +165,20 @@ describe("SystemdScanner", () => {
       expect(tasks).toHaveLength(0);
     });
 
+    it("returns empty results when header is missing NEXT column", async () => {
+      const outputMissingNext = `LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      logrotate.timer              logrotate.service
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": outputMissingNext,
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
     it("handles malformed output gracefully", async () => {
       mockExecByCommand({
         "list-timers": "some random garbage output\nwith no header",

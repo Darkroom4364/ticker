@@ -291,6 +291,26 @@ describe("edge cases", () => {
     expect(() => parseCronExpression("* * * * 5-1")).toThrow(/Invalid range/);
   });
 
+  it("rejects negative numbers", () => {
+    expect(() => parseCronExpression("-1 * * * *")).toThrow();
+  });
+
+  it("rejects negative step values", () => {
+    expect(() => parseCronExpression("*/-1 * * * *")).toThrow();
+  });
+
+  it("rejects non-numeric values", () => {
+    expect(() => parseCronExpression("abc * * * *")).toThrow();
+  });
+
+  it("rejects malformed range with 3+ parts", () => {
+    expect(() => parseCronExpression("0-5-10 * * * *")).toThrow(/Invalid range/);
+  });
+
+  it("rejects decimal values", () => {
+    expect(() => parseCronExpression("1.5 * * * *")).toThrow();
+  });
+
   it("handles February 29 / leap year", () => {
     // From Jan 1 2024 (leap year), next Feb 29 should be 2024
     const jan2024 = new Date(2024, 0, 1, 0, 0, 0);

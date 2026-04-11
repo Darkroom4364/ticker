@@ -33,7 +33,7 @@ function parseTimerOutput(stdout: string): Array<{
   const unitCol = headerLine.indexOf("UNIT");
   const activatesCol = headerLine.indexOf("ACTIVATES");
 
-  if (leftCol === -1 || unitCol === -1) return results;
+  if (nextCol === -1 || leftCol === -1 || unitCol === -1) return results;
 
   // Parse data lines (after header, before summary)
   for (let i = headerIndex + 1; i < lines.length; i++) {

@@ -38,6 +38,9 @@ function parseRateExpression(
   }
 
   const value = parseInt(match[1], 10);
+  if (value <= 0 || value > 1_000_000) {
+    throw new Error(`Rate value out of bounds: ${value} (must be 1-1000000)`);
+  }
   const rawUnit = match[2].toLowerCase();
   const unit = rawUnit.endsWith("s") ? rawUnit : rawUnit + "s";
 
