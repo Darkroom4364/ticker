@@ -5,6 +5,10 @@ import { orchestrate } from "./orchestrator.js";
 import { format } from "./formatters/index.js";
 import { loadConfig } from "./config.js";
 import { watch, parseDuration } from "./watch.js";
+import { checkHealth, formatHealthReport } from "./health.js";
+import { toPrometheus } from "./export.js";
+import { generateCompletions } from "./completions.js";
+import type { Shell } from "./completions.js";
 
 const program = new Command();
 
@@ -135,5 +139,72 @@ program
       });
     }
   );
+
+program
+  .command("check")
+  .description("Run health checks on discovered schedules")
+  .option(
+    "-s, --scanners <scanners>",
+    "specific scanners to run (comma-separated)"
+  )
+  .option("-v, --verbose", "show scanner timing and error details")
+  .action(
+    async (options: { scanners?: string; verbose?: boolean }) => {
+      const scannerNames = options.scanners
+        ? options.scanners.split(",").map((s) => s.trim())
+        : undefined;
+
+      const { tasks } = await orchestrate({
+        scanners: scannerNames,
+        verbose: options.verbose,
+      });
+
+      const report = checkHealth(tasks);
+      console.log(formatHealthReport(report));
+
+      if (report.warnings.some((w) => w.level === "error")) {
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("export")
+  .description("Export scan results as Prometheus metrics")
+  .option(
+    "-s, --scanners <scanners>",
+    "specific scanners to run (comma-separated)"
+  )
+  .option("-v, --verbose", "show scanner timing and error details")
+  .action(
+    async (options: { scanners?: string; verbose?: boolean }) => {
+      const scannerNames = options.scanners
+        ? options.scanners.split(",").map((s) => s.trim())
+        : undefined;
+
+      const { tasks, results } = await orchestrate({
+        scanners: scannerNames,
+        verbose: options.verbose,
+      });
+
+      const output = toPrometheus({ tasks, scannerResults: results });
+      process.stdout.write(output);
+    }
+  );
+
+program
+  .command("completions")
+  .description("Generate shell completions")
+  .argument("<shell>", "shell type (bash, zsh, fish)")
+  .action((shell: string) => {
+    const validShells = ["bash", "zsh", "fish"];
+    if (!validShells.includes(shell)) {
+      process.stderr.write(
+        `Error: Invalid shell '${shell}'. Use bash, zsh, or fish.\n`
+      );
+      process.exit(1);
+    }
+    console.log(generateCompletions(shell as Shell));
+  });
 
 program.parse();
