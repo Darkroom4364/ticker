@@ -132,10 +132,18 @@ describe("GitHubActionsScanner", () => {
       }
     });
 
+    it("returns empty array for workflow with on: as a string (not object)", async () => {
+      const tasks = await scanner.scan(defaultOptions);
+      const onString = tasks.find(
+        (t) => t.metadata?.workflowFile === "on-string.yml"
+      );
+      expect(onString).toBeUndefined();
+    });
+
     it("includes all scheduled workflows", async () => {
       const tasks = await scanner.scan(defaultOptions);
       // deploy.yml (1 schedule) + multi-schedule.yaml (2 schedules) + unnamed.yml (1 schedule)
-      // no-schedule.yml and invalid.yml should be skipped
+      // no-schedule.yml, invalid.yml, and on-string.yml should be skipped
       expect(tasks).toHaveLength(4);
     });
   });

@@ -58,7 +58,11 @@ function parseField(field: string, min: number, max: number): CronField {
         values.add(i);
       }
     } else if (range.includes("-")) {
-      const [startStr, endStr] = range.split("-");
+      const segments = range.split("-");
+      if (segments.length !== 2) {
+        throw new Error(`Invalid range: ${range}`);
+      }
+      const [startStr, endStr] = segments;
       const start = parseInt(startStr, 10);
       const end = parseInt(endStr, 10);
       if (isNaN(start) || isNaN(end) || start < min || end > max || start > end) {
@@ -68,6 +72,9 @@ function parseField(field: string, min: number, max: number): CronField {
         values.add(i);
       }
     } else {
+      if (!/^\d+$/.test(range)) {
+        throw new Error(`Invalid value: ${range} (must be ${min}-${max})`);
+      }
       const val = parseInt(range, 10);
       if (isNaN(val) || val < min || val > max) {
         throw new Error(`Invalid value: ${range} (must be ${min}-${max})`);
