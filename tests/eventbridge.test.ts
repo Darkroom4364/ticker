@@ -291,6 +291,75 @@ describe("EventBridgeScanner", () => {
       expect(tasks[0].name).toBe("bad-rate");
     });
 
+    it("includes rule with huge rate value but without nextRun/interval", async () => {
+      const client = createMockClient([
+        {
+          Rules: [
+            {
+              Name: "huge-rate",
+              ScheduleExpression: "rate(999999999999 minutes)",
+              EventBusName: "default",
+              State: "ENABLED",
+            },
+          ],
+        },
+      ]);
+      scanner = new EventBridgeScanner(client);
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("huge-rate");
+      expect(tasks[0].schedule).toBe("rate(999999999999 minutes)");
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[0].interval).toBeUndefined();
+    });
+
+    it("includes rule with invalid rate unit but without nextRun/interval", async () => {
+      const client = createMockClient([
+        {
+          Rules: [
+            {
+              Name: "bad-unit",
+              ScheduleExpression: "rate(5 millennia)",
+              EventBusName: "default",
+              State: "ENABLED",
+            },
+          ],
+        },
+      ]);
+      scanner = new EventBridgeScanner(client);
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("bad-unit");
+      expect(tasks[0].schedule).toBe("rate(5 millennia)");
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[0].interval).toBeUndefined();
+    });
+
+    it("includes rule with zero rate value but without nextRun/interval", async () => {
+      const client = createMockClient([
+        {
+          Rules: [
+            {
+              Name: "zero-rate",
+              ScheduleExpression: "rate(0 minutes)",
+              EventBusName: "default",
+              State: "ENABLED",
+            },
+          ],
+        },
+      ]);
+      scanner = new EventBridgeScanner(client);
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("zero-rate");
+      expect(tasks[0].schedule).toBe("rate(0 minutes)");
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[0].interval).toBeUndefined();
+    });
+
     it("returns empty array when no rules exist", async () => {
       const client = createMockClient([{ Rules: [] }]);
       scanner = new EventBridgeScanner(client);

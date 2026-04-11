@@ -309,6 +309,44 @@ describe("CrontabScanner", () => {
       expect(tasks[0].nextRun).toBeUndefined();
     });
 
+    it("silently skips unknown @-shortcuts", async () => {
+      mockExecByCommand({
+        "crontab -l": "@unknown /bin/cmd",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("silently skips @-shortcut with missing command", async () => {
+      mockExecByCommand({
+        "crontab -l": "@daily",
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("silently skips system crontab @-shortcut missing command after user", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/crontab") {
+          return Promise.resolve("@daily root\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockRejectedValue(new Error("ENOENT"));
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
     it("handles mixed @-shortcuts and normal entries", async () => {
       mockExecByCommand({
         "crontab -l": [
