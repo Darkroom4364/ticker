@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { orchestrate } from "./orchestrator.js";
 import { format } from "./formatters/index.js";
+import { loadConfig } from "./config.js";
 
 const program = new Command();
 
@@ -14,34 +15,53 @@ program
 program
   .command("scan")
   .description("Scan infrastructure for scheduled jobs")
-  .option("-f, --format <format>", "output format (table, json, yaml)", "table")
+  .option("-f, --format <format>", "output format (table, json, yaml)")
   .option(
     "-s, --scanners <scanners>",
     "specific scanners to run (comma-separated, e.g. crontab,kubernetes)"
   )
   .option("-v, --verbose", "show scanner timing and error details")
+  .option("-c, --config <path>", "path to config file")
   .action(
     async (options: {
-      format: string;
+      format?: string;
       scanners?: string;
       verbose?: boolean;
+      config?: string;
     }) => {
-      const formatName = options.format as "table" | "json" | "yaml";
+      // Load config file
+      let config;
+      try {
+        config = await loadConfig(options.config);
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        process.stderr.write(`Error: ${message}\n`);
+        process.exit(1);
+      }
+
+      // Merge: CLI flags override config, config overrides defaults
+      const formatName = (options.format ??
+        config?.format ??
+        "table") as "table" | "json" | "yaml";
+
       if (!["table", "json", "yaml"].includes(formatName)) {
         process.stderr.write(
-          `Error: Invalid format '${options.format}'. Use table, json, or yaml.\n`
+          `Error: Invalid format '${formatName}'. Use table, json, or yaml.\n`
         );
         process.exit(1);
       }
 
       const scannerNames = options.scanners
         ? options.scanners.split(",").map((s) => s.trim())
-        : undefined;
+        : config?.scanners ?? undefined;
+
+      const verbose = options.verbose ?? config?.verbose ?? undefined;
 
       const { tasks, results } = await orchestrate({
         scanners: scannerNames,
         format: formatName,
-        verbose: options.verbose,
+        verbose,
       });
 
       // Check if all scanners failed
