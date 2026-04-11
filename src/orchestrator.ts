@@ -12,7 +12,7 @@ export interface OrchestratorOptions extends ScanOptions {
   verbose?: boolean;
 }
 
-interface ScannerResult {
+export interface ScannerResult {
   scanner: string;
   tasks: ScheduledTask[];
   error?: string;
