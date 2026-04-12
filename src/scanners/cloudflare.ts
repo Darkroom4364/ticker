@@ -75,7 +75,8 @@ export class CloudflareScanner implements Scanner {
 
     const tasks: ScheduledTask[] = [];
 
-    for (const cronExpr of cronExpressions) {
+    for (let i = 0; i < cronExpressions.length; i++) {
+      const cronExpr = cronExpressions[i];
       if (typeof cronExpr !== "string") continue;
 
       let nextRun: Date | undefined;
@@ -89,7 +90,7 @@ export class CloudflareScanner implements Scanner {
       }
 
       tasks.push({
-        name: `cron-trigger`,
+        name: `cron-trigger-${i}`,
         schedule: cronExpr,
         source: "cloudflare",
         nextRun,
