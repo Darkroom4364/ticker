@@ -1,6 +1,6 @@
 {
   "name": "schedex",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CLI that discovers every scheduled job across infrastructure",
   "type": "module",
   "main": "./dist/index.js",
