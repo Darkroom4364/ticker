@@ -556,4 +556,160 @@ describe("CrontabScanner", () => {
       expect(tasks[0].interval).toBe("Every day at 2 AM");
     });
   });
+
+  describe("scan — user crontab error variations", () => {
+    it("returns empty array for 'no crontab for <username>' variant", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for deploy"),
+        "which": "/usr/bin/crontab",
+      });
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("returns empty array for EACCES error", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("EACCES: permission denied, open '/var/spool/cron'"),
+        "which": "/usr/bin/crontab",
+      });
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("returns empty array for crontab with only empty lines", async () => {
+      mockExecByCommand({
+        "crontab -l": "\n\n\n",
+        "which": "/usr/bin/crontab",
+      });
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+  });
+
+  describe("scan — system crontab edge cases", () => {
+    it("handles /etc/cron.d/ with multiple files", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/cron.d/logrotate") {
+          return Promise.resolve("0 0 * * * root /usr/sbin/logrotate\n");
+        }
+        if (path === "/etc/cron.d/certbot") {
+          return Promise.resolve("0 */12 * * * root /usr/bin/certbot renew\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockResolvedValue(["logrotate", "certbot"] as unknown as Awaited<ReturnType<typeof readdir>>);
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].metadata?.file).toBe("/etc/cron.d/logrotate");
+      expect(tasks[1].metadata?.file).toBe("/etc/cron.d/certbot");
+    });
+
+    it("skips system crontab files that contain only comments", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/crontab") {
+          return Promise.resolve("# This file is empty\n# No real entries\nSHELL=/bin/sh\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockRejectedValue(new Error("ENOENT"));
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("continues when individual /etc/cron.d/ file is permission denied", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/cron.d/restricted") {
+          return Promise.reject(new Error("EACCES: permission denied"));
+        }
+        if (path === "/etc/cron.d/logrotate") {
+          return Promise.resolve("0 0 * * * root /usr/sbin/logrotate\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockResolvedValue(["restricted", "logrotate"] as unknown as Awaited<ReturnType<typeof readdir>>);
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].metadata?.file).toBe("/etc/cron.d/logrotate");
+    });
+
+    it("handles @reboot entries mixed with regular entries in user crontab", async () => {
+      mockExecByCommand({
+        "crontab -l": [
+          "@reboot /opt/startup.sh",
+          "0 3 * * * /usr/bin/backup",
+          "@daily /usr/bin/cleanup",
+          "@reboot /opt/mount-drives.sh",
+        ].join("\n"),
+        "which": "/usr/bin/crontab",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(4);
+      expect(tasks[0].schedule).toBe("@reboot");
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[1].schedule).toBe("0 3 * * *");
+      expect(tasks[1].nextRun).toBeInstanceOf(Date);
+      expect(tasks[2].schedule).toBe("0 0 * * *");
+      expect(tasks[3].schedule).toBe("@reboot");
+      expect(tasks[3].nextRun).toBeUndefined();
+    });
+
+    it("parses system crontab with user containing dots and hyphens", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/crontab") {
+          return Promise.resolve("0 3 * * * my-user.name /usr/bin/task\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockRejectedValue(new Error("ENOENT"));
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].metadata?.user).toBe("my-user.name");
+      expect(tasks[0].command).toBe("/usr/bin/task");
+    });
+
+    it("parses system crontab with numeric UID instead of username", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("no crontab for user"),
+        "which": "/usr/bin/crontab",
+      });
+
+      mockedReadFile.mockImplementation((path: unknown) => {
+        if (path === "/etc/crontab") {
+          return Promise.resolve("0 3 * * * 1000 /usr/bin/task\n");
+        }
+        return Promise.reject(new Error("ENOENT"));
+      });
+      mockedReaddir.mockRejectedValue(new Error("ENOENT"));
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].metadata?.user).toBe("1000");
+      expect(tasks[0].command).toBe("/usr/bin/task");
+    });
+  });
 });

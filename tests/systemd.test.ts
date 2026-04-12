@@ -172,6 +172,33 @@ describe("SystemdScanner", () => {
       await expect(scanner.scan(defaultOptions)).rejects.toThrow("ENOMEM");
     });
 
+    it("extracts correct fields when LEFT appears before NEXT in output", async () => {
+      // Bug: parseTimerOutput uses substring(nextCol, leftCol) which assumes
+      // NEXT always appears before LEFT in the header. When LEFT comes first,
+      // leftCol < nextCol so substring(nextCol, leftCol) swaps and extracts
+      // the LEFT value ("5h left") instead of the NEXT datetime.
+      const reorderedOutput =
+        "LEFT          NEXT                         LAST                         PASSED       UNIT                         ACTIVATES\n" +
+        "5h left       Mon 2025-01-20 00:00:00 UTC  Sun 2025-01-19 00:00:00 UTC  18h ago      logrotate.timer              logrotate.service\n" +
+        "\n" +
+        "1 timers listed.\n";
+
+      mockExecByCommand({
+        "list-timers": reorderedOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Rotate log files",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("logrotate");
+      expect(tasks[0].metadata?.unit).toBe("logrotate.timer");
+      // The next run date must be a valid Date parsed from the NEXT column
+      expect(tasks[0].nextRun).toBeInstanceOf(Date);
+      expect(tasks[0].nextRun!.toISOString()).toContain("2025-01-20");
+    });
+
     it("falls back to 'systemd timer' when calendar expression unavailable", async () => {
       mockExecByCommand({
         "list-timers": NORMAL_TIMER_OUTPUT,
@@ -233,6 +260,164 @@ Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago 
         expect(call[0]).toBe("systemctl");
         expect(Array.isArray(call[1])).toBe(true);
       }
+    });
+
+    it("handles timer output with extra columns", async () => {
+      const extraColOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES                    EXTRA
+Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      logrotate.timer              logrotate.service            something
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": extraColOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Rotate log files",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      // The parser looks for NEXT, LEFT, UNIT, ACTIVATES columns -- extra columns shouldn't break it
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("logrotate");
+    });
+
+    it("handles output with missing LEFT column", async () => {
+      const noLeftOutput = `NEXT                         LAST                         PASSED       UNIT                         ACTIVATES
+Mon 2025-01-20 00:00:00 UTC  Sun 2025-01-19 00:00:00 UTC  18h ago      logrotate.timer              logrotate.service
+
+1 timers listed.
+`;
+      mockExecByCommand({ "list-timers": noLeftOutput });
+      const tasks = await scanner.scan(defaultOptions);
+      // The parser requires LEFT column, so it returns empty
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("handles empty NEXT field", async () => {
+      const emptyNextOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+                             n/a           Sun 2025-01-19 00:00:00 UTC  18h ago      logrotate.timer              logrotate.service
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": emptyNextOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=n/a }",
+        "Description": "Description=Rotate log files",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].nextRun).toBeUndefined();
+    });
+
+    it("handles 'n/a' in NEXT field", async () => {
+      const naNextOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+n/a                          n/a           Sun 2025-01-19 00:00:00 UTC  18h ago      dead.timer                   dead.service
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": naNextOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=n/a }",
+        "Description": "Description=Dead timer",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[0].name).toBe("dead");
+    });
+
+    it("handles timezone info in timestamp", async () => {
+      const tzOutput = `NEXT                              LEFT          LAST                              PASSED       UNIT                         ACTIVATES
+Mon 2025-01-20 00:00:00 EST       5h left       Sun 2025-01-19 00:00:00 EST       18h ago      logrotate.timer              logrotate.service
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": tzOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Rotate log files",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("logrotate");
+    });
+
+    it("handles very long unit names", async () => {
+      const longUnit = "a".repeat(200) + ".timer";
+      const longService = "a".repeat(200) + ".service";
+      const padding = " ".repeat(Math.max(0, 29 - longUnit.length));
+      const timerOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      ${longUnit}${padding} ${longService}
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": timerOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Long timer",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      // The unit name extends beyond the expected UNIT column width,
+      // but the parser uses substring from column position so it should capture it
+      expect(tasks.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("returns empty for output with only header, no data rows", async () => {
+      const headerOnly = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+
+0 timers listed.
+`;
+      mockExecByCommand({ "list-timers": headerOnly });
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("returns empty for completely empty string output", async () => {
+      mockExecByCommand({ "list-timers": "" });
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("handles extra blank lines between rows", async () => {
+      // Parser stops at blank line, so only the first timer should be parsed
+      const extraBlanksOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      logrotate.timer              logrotate.service
+
+Mon 2025-01-20 06:30:00 UTC  11h left      Sun 2025-01-19 06:30:00 UTC  12h ago      cleanup.timer                cleanup.service
+
+2 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": extraBlanksOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Rotate log files",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      // Parser breaks at blank line, so only the first timer before the blank line
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("logrotate");
+    });
+
+    it("handles unicode in timer names", async () => {
+      const unicodeOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      caf\u00e9-backup.timer            caf\u00e9-backup.service
+
+1 timers listed.
+`;
+      mockExecByCommand({
+        "list-timers": unicodeOutput,
+        "TimersCalendar": "TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 }",
+        "Description": "Description=Backup",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("caf\u00e9-backup");
+      expect(tasks[0].metadata?.unit).toBe("caf\u00e9-backup.timer");
     });
   });
 });

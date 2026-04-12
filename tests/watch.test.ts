@@ -390,4 +390,291 @@ describe("watch()", () => {
 
     stop();
   });
+
+  // ── Edge cases ───────────────────────────────────────────────────────
+
+  it("no changes detected when scanner returns same results twice", async () => {
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA] })
+      .mockResolvedValueOnce({ tasks: [taskA] });
+    formatFn.mockReturnValue("TABLE");
+    const onChanges = vi.fn();
+
+    const stop = watch({ intervalMs: 30_000, onChanges });
+    await vi.advanceTimersByTimeAsync(0); // initial scan
+    await vi.advanceTimersByTimeAsync(30_000); // second scan
+
+    expect(onChanges).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("detects new tasks added between polls", async () => {
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA] })
+      .mockResolvedValueOnce({ tasks: [taskA, taskB] });
+    formatFn.mockReturnValue("TABLE");
+    const onChanges = vi.fn();
+
+    const stop = watch({ intervalMs: 30_000, onChanges });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    expect(onChanges.mock.calls[0][0].added).toHaveLength(1);
+    expect(onChanges.mock.calls[0][0].added[0].name).toBe("daily-report");
+    stop();
+  });
+
+  it("detects removed tasks between polls", async () => {
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA, taskB] })
+      .mockResolvedValueOnce({ tasks: [taskA] });
+    formatFn.mockReturnValue("TABLE");
+    const onChanges = vi.fn();
+
+    const stop = watch({ intervalMs: 30_000, onChanges });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    expect(onChanges.mock.calls[0][0].removed).toHaveLength(1);
+    expect(onChanges.mock.calls[0][0].removed[0].name).toBe("daily-report");
+    stop();
+  });
+
+  it("detects schedule change between polls", async () => {
+    const taskBChanged = { ...taskB, schedule: "0 12 * * *" };
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskB] })
+      .mockResolvedValueOnce({ tasks: [taskBChanged] });
+    formatFn.mockReturnValue("TABLE");
+    const onChanges = vi.fn();
+
+    const stop = watch({ intervalMs: 30_000, onChanges });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    const changes = onChanges.mock.calls[0][0];
+    expect(changes.modified).toHaveLength(1);
+    expect(changes.modified[0].before.schedule).toBe("0 8 * * *");
+    expect(changes.modified[0].after.schedule).toBe("0 12 * * *");
+    stop();
+  });
+
+  it("handles scanner throwing on second poll", async () => {
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA] })
+      .mockRejectedValueOnce(new Error("scan exploded"));
+    formatFn.mockReturnValue("TABLE");
+
+    const stop = watch({ intervalMs: 30_000 });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Scan error: scan exploded"),
+    );
+    stop();
+  });
+
+  it("recovers after scanner error and detects changes on next poll", async () => {
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA] })
+      .mockRejectedValueOnce(new Error("transient"))
+      .mockResolvedValueOnce({ tasks: [taskA, taskC] });
+    formatFn.mockReturnValue("TABLE");
+    const onChanges = vi.fn();
+
+    const stop = watch({ intervalMs: 10_000, onChanges });
+    await vi.advanceTimersByTimeAsync(0);    // initial scan
+    await vi.advanceTimersByTimeAsync(10_000); // error scan
+    await vi.advanceTimersByTimeAsync(10_000); // recovery scan
+
+    // After error, previousTasks should still be [taskA], so adding taskC is detected
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    expect(onChanges.mock.calls[0][0].added).toHaveLength(1);
+    expect(onChanges.mock.calls[0][0].added[0].name).toBe("cleanup");
+    stop();
+  });
+
+  it("stop is idempotent — calling twice does not throw", async () => {
+    orchestrate.mockResolvedValue({ tasks: [] });
+    formatFn.mockReturnValue("");
+
+    const stop = watch({ intervalMs: 30_000 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(() => {
+      stop();
+      stop();
+    }).not.toThrow();
+  });
+
+  it("verbose stop message includes scan count and change count", async () => {
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA] })
+      .mockResolvedValueOnce({ tasks: [taskA, taskB] });
+    formatFn.mockReturnValue("TABLE");
+
+    const stop = watch({ intervalMs: 30_000, verbose: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    stop();
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Stopped after 2 scan(s), 1 total change(s) detected"),
+    );
+  });
+
+  it("task added and removed in same poll cycle shows both", async () => {
+    // First poll: [A, B]. Second poll: [A, C]. B removed, C added.
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA, taskB] })
+      .mockResolvedValueOnce({ tasks: [taskA, taskC] });
+    formatFn.mockReturnValue("TABLE");
+    const onChanges = vi.fn();
+
+    const stop = watch({ intervalMs: 30_000, onChanges });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    const changes = onChanges.mock.calls[0][0];
+    expect(changes.added).toHaveLength(1);
+    expect(changes.added[0].name).toBe("cleanup");
+    expect(changes.removed).toHaveLength(1);
+    expect(changes.removed[0].name).toBe("daily-report");
+    stop();
+  });
+});
+
+// ── Additional diffTasks edge cases ──────────────────────────────────
+
+describe("diffTasks edge cases", () => {
+  it("task name changes but schedule stays same — detected as add + remove", () => {
+    const oldTask: ScheduledTask = { name: "old-name", schedule: "0 3 * * *", source: "crontab" };
+    const newTask: ScheduledTask = { name: "new-name", schedule: "0 3 * * *", source: "crontab" };
+
+    const changes = diffTasks([oldTask], [newTask]);
+
+    expect(changes.added).toHaveLength(1);
+    expect(changes.added[0].name).toBe("new-name");
+    expect(changes.removed).toHaveLength(1);
+    expect(changes.removed[0].name).toBe("old-name");
+    expect(changes.modified).toHaveLength(0);
+  });
+
+  it("duplicate tasks in current list — last one wins in map", () => {
+    const t1: ScheduledTask = { name: "dup", schedule: "0 1 * * *", source: "s" };
+    const t2: ScheduledTask = { name: "dup", schedule: "0 2 * * *", source: "s" };
+
+    const changes = diffTasks([], [t1, t2]);
+
+    // Map uses taskKey, so t2 overwrites t1. Only 1 added.
+    expect(changes.added).toHaveLength(1);
+    expect(changes.added[0].schedule).toBe("0 2 * * *");
+  });
+
+  it("all tasks removed", () => {
+    const changes = diffTasks([taskA, taskB, taskC], []);
+
+    expect(changes.added).toHaveLength(0);
+    expect(changes.removed).toHaveLength(3);
+    expect(changes.modified).toHaveLength(0);
+  });
+
+  it("all tasks added from empty", () => {
+    const changes = diffTasks([], [taskA, taskB, taskC]);
+
+    expect(changes.added).toHaveLength(3);
+    expect(changes.removed).toHaveLength(0);
+    expect(changes.modified).toHaveLength(0);
+  });
+
+  it("non-schedule fields change — not detected as modification", () => {
+    const before: ScheduledTask = { name: "job", schedule: "0 * * * *", source: "s", command: "echo hi" };
+    const after: ScheduledTask = { name: "job", schedule: "0 * * * *", source: "s", command: "echo bye", description: "updated" };
+
+    const changes = diffTasks([before], [after]);
+
+    expect(changes.modified).toHaveLength(0);
+    expect(changes.added).toHaveLength(0);
+    expect(changes.removed).toHaveLength(0);
+  });
+
+  it("timestamp is set to a Date on every call", () => {
+    const changes = diffTasks([], []);
+    expect(changes.timestamp).toBeInstanceOf(Date);
+  });
+});
+
+// ── Additional parseDuration edge cases ──────────────────────────────
+
+describe("parseDuration edge cases", () => {
+  it("rejects 'ms' unit", () => {
+    expect(() => parseDuration("500ms")).toThrow("Invalid duration");
+  });
+
+  it("rejects '0s'", () => {
+    expect(() => parseDuration("0s")).toThrow("at least 10 seconds");
+  });
+
+  it("rejects negative-looking input", () => {
+    expect(() => parseDuration("-5s")).toThrow("Invalid duration");
+  });
+
+  it("rejects just a unit with no number", () => {
+    expect(() => parseDuration("s")).toThrow("Invalid duration");
+  });
+
+  it("rejects decimal values", () => {
+    expect(() => parseDuration("1.5m")).toThrow("Invalid duration");
+  });
+
+  it("parses uppercase units", () => {
+    expect(parseDuration("30S")).toBe(30_000);
+    expect(parseDuration("1M")).toBe(60_000);
+    expect(parseDuration("1H")).toBe(3_600_000);
+  });
+
+  it("rejects 9s (just below minimum)", () => {
+    expect(() => parseDuration("9s")).toThrow("at least 10 seconds");
+  });
+
+  it("accepts large values", () => {
+    expect(parseDuration("24h")).toBe(86_400_000);
+    expect(parseDuration("100m")).toBe(6_000_000);
+  });
+
+  it("rejects input with extra characters", () => {
+    expect(() => parseDuration("30sec")).toThrow("Invalid duration");
+    expect(() => parseDuration("5 minutes")).toThrow("Invalid duration");
+  });
+});
+
+// ── formatChanges edge cases ─────────────────────────────────────────
+
+describe("formatChanges edge cases", () => {
+  it("singular 'change' when exactly 1 change", () => {
+    const output = formatChanges({
+      added: [taskA],
+      removed: [],
+      modified: [],
+      timestamp: new Date("2026-01-01T00:00:00Z"),
+    });
+    expect(output).toContain("1 change detected:");
+    expect(output).not.toContain("1 changes");
+  });
+
+  it("zero changes returns '0 changes detected'", () => {
+    const output = formatChanges({
+      added: [],
+      removed: [],
+      modified: [],
+      timestamp: new Date("2026-01-01T00:00:00Z"),
+    });
+    expect(output).toContain("0 changes detected:");
+  });
 });

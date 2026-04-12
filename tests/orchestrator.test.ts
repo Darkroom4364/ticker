@@ -281,4 +281,231 @@ describe("orchestrate", () => {
     expect(order[0]).toBe("fast");
     expect(order[1]).toBe("slow");
   });
+
+  // ── Edge cases ───────────────────────────────────────────────────────
+
+  it("all scanners unavailable returns zero tasks", async () => {
+    const s1 = createMockScanner("s1", [TASK_A], { available: false });
+    const s2 = createMockScanner("s2", [TASK_B], { available: false });
+
+    const { tasks, results } = await orchestrate({}, [s1, s2]);
+
+    expect(tasks).toHaveLength(0);
+    expect(results).toHaveLength(2);
+    expect(results.every((r) => !r.error)).toBe(true);
+    expect(s1.scan).not.toHaveBeenCalled();
+    expect(s2.scan).not.toHaveBeenCalled();
+  });
+
+  it("all scanners throw errors", async () => {
+    const s1 = createMockScanner("s1", [], { error: new Error("e1") });
+    const s2 = createMockScanner("s2", [], { error: new Error("e2") });
+    const s3 = createMockScanner("s3", [], { error: new Error("e3") });
+
+    const { tasks, results } = await orchestrate({}, [s1, s2, s3]);
+
+    expect(tasks).toHaveLength(0);
+    expect(results).toHaveLength(3);
+    expect(results.every((r) => r.error)).toBe(true);
+  });
+
+  it("scanner scan() returns empty array", async () => {
+    const scanner = createMockScanner("empty", []);
+
+    const { tasks, results } = await orchestrate({}, [scanner]);
+
+    expect(tasks).toHaveLength(0);
+    expect(results[0].tasks).toHaveLength(0);
+    expect(results[0].error).toBeUndefined();
+  });
+
+  it("mix of successful, failed, and unavailable scanners", async () => {
+    const good = createMockScanner("good", [TASK_A]);
+    const bad = createMockScanner("bad", [], { error: new Error("fail") });
+    const unavail = createMockScanner("unavail", [], { available: false });
+
+    const { tasks, results } = await orchestrate({}, [good, bad, unavail]);
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].name).toBe("task-a");
+    expect(results).toHaveLength(3);
+
+    const goodR = results.find((r) => r.scanner === "good")!;
+    expect(goodR.error).toBeUndefined();
+    expect(goodR.tasks).toHaveLength(1);
+
+    const badR = results.find((r) => r.scanner === "bad")!;
+    expect(badR.error).toBe("fail");
+
+    const unavailR = results.find((r) => r.scanner === "unavail")!;
+    expect(unavailR.error).toBeUndefined();
+    expect(unavailR.tasks).toHaveLength(0);
+  });
+
+  it("scanners returning tasks with identical names from different sources", async () => {
+    const t1: ScheduledTask = { name: "backup", schedule: "0 3 * * *", source: "s1", nextRun: new Date("2025-06-16T03:00:00") };
+    const t2: ScheduledTask = { name: "backup", schedule: "0 4 * * *", source: "s2", nextRun: new Date("2025-06-16T04:00:00") };
+    const s1 = createMockScanner("s1", [t1]);
+    const s2 = createMockScanner("s2", [t2]);
+
+    const { tasks } = await orchestrate({}, [s1, s2]);
+
+    expect(tasks).toHaveLength(2);
+    // Both should be present, sorted by nextRun
+    expect(tasks[0].source).toBe("s1");
+    expect(tasks[1].source).toBe("s2");
+  });
+
+  it("scanners returning tasks with identical names from same source", async () => {
+    const t1: ScheduledTask = { name: "dup", schedule: "0 1 * * *", source: "src", nextRun: new Date("2025-06-16T01:00:00") };
+    const t2: ScheduledTask = { name: "dup", schedule: "0 2 * * *", source: "src", nextRun: new Date("2025-06-16T02:00:00") };
+    const scanner = createMockScanner("src", [t1, t2]);
+
+    const { tasks } = await orchestrate({}, [scanner]);
+
+    // orchestrate does not deduplicate — it just collects
+    expect(tasks).toHaveLength(2);
+  });
+
+  it("sorts tasks with null nextRun to the end", async () => {
+    const withRun: ScheduledTask = { name: "with-run", schedule: "0 5 * * *", source: "s", nextRun: new Date("2025-06-16T05:00:00") };
+    const noRun1: ScheduledTask = { name: "no-run-a", schedule: "@reboot", source: "s" };
+    const noRun2: ScheduledTask = { name: "no-run-b", schedule: "@yearly", source: "s" };
+    const scanner = createMockScanner("s", [noRun1, withRun, noRun2]);
+
+    const { tasks } = await orchestrate({}, [scanner]);
+
+    expect(tasks[0].name).toBe("with-run");
+    expect(tasks[1].name).toBe("no-run-a");
+    expect(tasks[2].name).toBe("no-run-b");
+  });
+
+  it("handles 20+ scanners concurrently", async () => {
+    const scanners: Scanner[] = [];
+    for (let i = 0; i < 25; i++) {
+      const task: ScheduledTask = {
+        name: `task-${i}`,
+        schedule: `${i} * * * *`,
+        source: `scanner-${i}`,
+        nextRun: new Date(`2025-06-16T00:${String(i).padStart(2, "0")}:00`),
+      };
+      scanners.push(createMockScanner(`scanner-${i}`, [task]));
+    }
+
+    const { tasks, results } = await orchestrate({}, scanners);
+
+    expect(results).toHaveLength(25);
+    expect(tasks).toHaveLength(25);
+    // Should be sorted by nextRun
+    for (let i = 0; i < 24; i++) {
+      expect(tasks[i].nextRun!.getTime()).toBeLessThanOrEqual(tasks[i + 1].nextRun!.getTime());
+    }
+  });
+
+  it("PartialScanError with empty tasks array", async () => {
+    const scanner: Scanner = {
+      name: "partial-empty",
+      isAvailable: vi.fn().mockResolvedValue(true),
+      scan: vi.fn().mockRejectedValue(new PartialScanError("all failed", [])),
+    };
+
+    const { tasks, results } = await orchestrate({}, [scanner]);
+
+    expect(tasks).toHaveLength(0);
+    expect(results[0].error).toBe("all failed");
+    expect(results[0].tasks).toHaveLength(0);
+  });
+
+  it("PartialScanError with null message coerced to string", async () => {
+    const scanner: Scanner = {
+      name: "partial-null-msg",
+      isAvailable: vi.fn().mockResolvedValue(true),
+      scan: vi.fn().mockRejectedValue(new PartialScanError(null as unknown as string, [TASK_A])),
+    };
+
+    const { tasks, results } = await orchestrate({}, [scanner]);
+
+    expect(tasks).toHaveLength(1);
+    expect(results[0].error).toBeDefined();
+  });
+
+  it("filtering with --scanners: valid scanner name", async () => {
+    const s1 = createMockScanner("alpha", [TASK_A]);
+    const s2 = createMockScanner("beta", [TASK_B]);
+
+    const { results } = await orchestrate({ scanners: ["beta"] }, [s1, s2]);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].scanner).toBe("beta");
+  });
+
+  it("filtering with --scanners: invalid scanner name returns empty", async () => {
+    const s1 = createMockScanner("alpha", [TASK_A]);
+
+    const { tasks, results } = await orchestrate({ scanners: ["does-not-exist"] }, [s1]);
+
+    expect(results).toHaveLength(0);
+    expect(tasks).toHaveLength(0);
+  });
+
+  it("filtering with --scanners: empty array runs no scanners", async () => {
+    const s1 = createMockScanner("alpha", [TASK_A]);
+
+    const { tasks, results } = await orchestrate({ scanners: [] }, [s1]);
+
+    expect(results).toHaveLength(0);
+    expect(tasks).toHaveLength(0);
+  });
+
+  it("scanner returning non-Error throwable is stringified", async () => {
+    const scanner: Scanner = {
+      name: "string-thrower",
+      isAvailable: vi.fn().mockResolvedValue(true),
+      scan: vi.fn().mockRejectedValue("raw string error"),
+    };
+
+    const { results } = await orchestrate({}, [scanner]);
+
+    expect(results[0].error).toBe("raw string error");
+    expect(results[0].tasks).toHaveLength(0);
+  });
+
+  it("isAvailable() throwing does not call scan()", async () => {
+    const scanner: Scanner = {
+      name: "isavail-throws",
+      isAvailable: vi.fn().mockRejectedValue(new Error("boom")),
+      scan: vi.fn(),
+    };
+
+    await orchestrate({}, [scanner]);
+
+    expect(scanner.scan).not.toHaveBeenCalled();
+  });
+
+  it("records durationMs for each scanner result", async () => {
+    const scanner = createMockScanner("timed", [TASK_A]);
+
+    const { results } = await orchestrate({}, [scanner]);
+
+    expect(typeof results[0].durationMs).toBe("number");
+    expect(results[0].durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("mix of PartialScanError and successful scanners merges tasks", async () => {
+    const partial: Scanner = {
+      name: "partial",
+      isAvailable: vi.fn().mockResolvedValue(true),
+      scan: vi.fn().mockRejectedValue(new PartialScanError("half done", [TASK_A])),
+    };
+    const good = createMockScanner("good", [TASK_EARLY]);
+
+    const { tasks, results } = await orchestrate({}, [partial, good]);
+
+    expect(tasks).toHaveLength(2);
+    // TASK_EARLY has earlier nextRun than TASK_A
+    expect(tasks[0].name).toBe("task-early");
+    expect(tasks[1].name).toBe("task-a");
+    expect(results.find((r) => r.scanner === "partial")!.error).toBe("half done");
+    expect(results.find((r) => r.scanner === "good")!.error).toBeUndefined();
+  });
 });

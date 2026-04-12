@@ -222,3 +222,109 @@ describe("schedex CLI", () => {
     expect(stdout).toContain("--verbose");
   });
 });
+
+describe("CLI edge cases", () => {
+  it("unknown subcommand shows help or error", () => {
+    const { stdout, stderr, exitCode } = run("notacommand");
+    // Commander prints an error for unknown commands
+    expect(stderr).toContain("notacommand");
+    expect(exitCode).toBe(1);
+  });
+
+  it("scan --format with empty string errors", () => {
+    const { exitCode, stderr } = run("scan", "--format", "");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Invalid format");
+  });
+
+  it("scan --scanners with empty string still succeeds (no scanners match)", () => {
+    const { exitCode } = run("scan", "--scanners", "", "--format", "json");
+    // Empty string split by comma yields [""] which matches no scanners
+    expect(exitCode).toBe(0);
+  });
+
+  it("last --format flag wins when multiple are given", () => {
+    // Commander takes the last value for repeated options
+    const { stdout, exitCode } = run(
+      "scan",
+      "--format",
+      "json",
+      "--format",
+      "yaml",
+    );
+    expect(exitCode).toBe(0);
+    // yaml output for empty array
+    expect(stdout.trim()).toBe("[]");
+  });
+
+  it("--help combined with scan and other flags still shows help", () => {
+    const { stdout, exitCode } = run(
+      "scan",
+      "--format",
+      "json",
+      "--verbose",
+      "--help",
+    );
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--format");
+    expect(stdout).toContain("--scanners");
+  });
+
+  it("--version flag prints version", () => {
+    const { stdout, exitCode } = run("--version");
+    expect(exitCode).toBe(0);
+    expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("very long argument value for --scanners", () => {
+    const longValue = "a".repeat(10000);
+    const { exitCode } = run("scan", "--scanners", longValue, "--format", "json");
+    // Should not crash — no scanner matches, exit 0
+    expect(exitCode).toBe(0);
+  });
+
+  it("special characters in --scanners argument", () => {
+    const { exitCode } = run(
+      "scan",
+      "--scanners",
+      "foo;bar,baz'qux\"quux",
+      "--format",
+      "json",
+    );
+    // Should not crash
+    expect(exitCode).toBe(0);
+  });
+
+  it("backslashes in argument values", () => {
+    const { exitCode } = run(
+      "scan",
+      "--scanners",
+      "foo\\bar\\baz",
+      "--format",
+      "json",
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it("--config pointing to nonexistent file errors", () => {
+    const { exitCode, stderr } = run(
+      "scan",
+      "--config",
+      "/tmp/schedex-nonexistent-config-12345.yml",
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Config file not found");
+  });
+
+  it("completions with no shell argument errors", () => {
+    const { exitCode, stderr } = run("completions");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("missing required argument");
+  });
+
+  it("scan with unknown flag errors", () => {
+    const { exitCode, stderr } = run("scan", "--nonexistent-flag");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("unknown option");
+  });
+});

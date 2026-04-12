@@ -315,4 +315,220 @@ describe("toPrometheus", () => {
 
     expect(output).toContain('schedex_jobs_total{scanner="crontab"} 5');
   });
+
+  // ── Edge-case tests ──────────────────────────────────────────────────
+
+  it("sanitizes backslash, newline, quote, double quote in task name", () => {
+    const task = makeTask({
+      name: 'back\\slash\nnew"line\'quote',
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+    // All non-alphanumeric chars become _
+    expect(output).toContain('job="back_slash_new_line_quote"');
+    expect(output).not.toContain("\\");
+    expect(output).not.toContain("\n" + 'line"');
+  });
+
+  it("sanitizes task name with only special characters", () => {
+    const task = makeTask({
+      name: "!@#$%^&*()",
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+    expect(output).toContain('job="__________"');
+  });
+
+  it("sanitizes source with dots and slashes (path-like)", () => {
+    const task = makeTask({
+      name: "job",
+      schedule: "* * * * *",
+      source: "/etc/cron.d/my-job",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+    expect(output).toContain('scanner="_etc_cron_d_my_job"');
+    expect(output).not.toContain('scanner="/etc/cron.d/my-job"');
+  });
+
+  it("handles empty task array export (no scannerResults)", () => {
+    const output = toPrometheus({ tasks: [] });
+    expect(output).toContain("schedex_jobs_total 0");
+    expect(output).toContain("# HELP schedex_next_run_seconds");
+    expect(output).toContain("# TYPE schedex_next_run_seconds gauge");
+    // No next_run_seconds data lines
+    const lines = output.split("\n");
+    const nextRunValues = lines.filter(
+      (l) => l.startsWith("schedex_next_run_seconds{"),
+    );
+    expect(nextRunValues).toHaveLength(0);
+  });
+
+  it("handles schedule containing backslash-n literal", () => {
+    const task = makeTask({
+      name: "escaped",
+      schedule: "0 * * * *\\n# comment",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+    // Schedule is not used in labels, but task should be counted
+    expect(output).toContain('schedex_jobs_total{scanner="crontab"} 1');
+  });
+
+  it("sanitizes unicode/emoji in metric labels", () => {
+    const task = makeTask({
+      name: "🕐 backup",
+      schedule: "* * * * *",
+      source: "test",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+    // Emoji chars are non-alphanumeric, should be replaced with _
+    expect(output).toContain('job="___backup"');
+    expect(output).not.toContain("🕐");
+  });
+
+  it("handles very large nextRun timestamp (year 9999)", () => {
+    const farFuture = new Date("9999-12-31T23:59:59Z");
+    const task = makeTask({
+      name: "far",
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: farFuture,
+    });
+    const output = toPrometheus({ tasks: [task] });
+    const expectedSeconds = Math.round(
+      (farFuture.getTime() - NOW.getTime()) / 1000,
+    );
+    expect(output).toContain(
+      `schedex_next_run_seconds{job="far",scanner="crontab"} ${expectedSeconds}`,
+    );
+    expect(expectedSeconds).toBeGreaterThan(0);
+  });
+
+  it("handles nextRun = epoch (0)", () => {
+    const epoch = new Date(0);
+    const task = makeTask({
+      name: "epoch",
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: epoch,
+    });
+    const output = toPrometheus({ tasks: [task] });
+    const expectedSeconds = Math.round(
+      (epoch.getTime() - NOW.getTime()) / 1000,
+    );
+    expect(output).toContain(
+      `schedex_next_run_seconds{job="epoch",scanner="crontab"} ${expectedSeconds}`,
+    );
+    expect(expectedSeconds).toBeLessThan(0);
+  });
+
+  it("handles nextRun = undefined (omits from next_run_seconds)", () => {
+    const task = makeTask({
+      name: "nope",
+      schedule: "* * * * *",
+      source: "crontab",
+    });
+    const output = toPrometheus({ tasks: [task] });
+    expect(output).toContain('schedex_jobs_total{scanner="crontab"} 1');
+    expect(output).not.toContain('job="nope"');
+  });
+
+  it("handles 500+ tasks (cardinality explosion)", () => {
+    const tasks = Array.from({ length: 500 }, (_, i) =>
+      makeTask({
+        name: `task${i}`,
+        schedule: "* * * * *",
+        source: "crontab",
+        nextRun: new Date("2025-06-15T11:00:00Z"),
+      }),
+    );
+    const output = toPrometheus({ tasks });
+    expect(output).toContain('schedex_jobs_total{scanner="crontab"} 500');
+    const lines = output.split("\n");
+    const nextRunLines = lines.filter((l) =>
+      l.startsWith("schedex_next_run_seconds{"),
+    );
+    expect(nextRunLines).toHaveLength(500);
+  });
+
+  it("handles label values exceeding typical Prometheus limits (long name)", () => {
+    const longName = "a".repeat(1000);
+    const task = makeTask({
+      name: longName,
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+    expect(output).toContain(`job="${longName}"`);
+  });
+
+  it("handles duplicate name+source — emits duplicate metric lines", () => {
+    const tasks = [
+      makeTask({
+        name: "dup",
+        schedule: "0 * * * *",
+        source: "crontab",
+        nextRun: new Date("2025-06-15T11:00:00Z"),
+      }),
+      makeTask({
+        name: "dup",
+        schedule: "30 * * * *",
+        source: "crontab",
+        nextRun: new Date("2025-06-15T11:30:00Z"),
+      }),
+    ];
+    const output = toPrometheus({ tasks });
+    expect(output).toContain('schedex_jobs_total{scanner="crontab"} 2');
+    const lines = output.split("\n");
+    const dupLines = lines.filter((l) => l.includes('job="dup"'));
+    // Both tasks should appear as separate metric lines
+    expect(dupLines).toHaveLength(2);
+  });
+
+  it("handles schedule with double quotes inside", () => {
+    const task = makeTask({
+      name: "quoted",
+      schedule: '0 2 * * * "echo hello"',
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    // Schedule not used in labels, should not break anything
+    const output = toPrometheus({ tasks: [task] });
+    expect(output).toContain('job="quoted"');
+  });
+
+  it("HELP and TYPE declarations are present for all metric families", () => {
+    const task = makeTask({
+      name: "t",
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({
+      tasks: [task],
+      scannerResults: [
+        { scanner: "crontab", tasks: [task], durationMs: 10 },
+        { scanner: "failing", tasks: [], durationMs: 5, error: "boom" },
+      ],
+    });
+
+    // All four metric families should have HELP and TYPE
+    for (const family of [
+      "schedex_jobs_total",
+      "schedex_next_run_seconds",
+      "schedex_scan_duration_seconds",
+      "schedex_scanner_errors_total",
+    ]) {
+      expect(output).toContain(`# HELP ${family}`);
+      expect(output).toContain(`# TYPE ${family}`);
+    }
+  });
 });

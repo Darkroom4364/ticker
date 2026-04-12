@@ -1,0 +1,6 @@
+{
+  "name": "my-worker",
+  "triggers": {
+    "crons": ["0 2 * * *", "0 3 * * *"]
+  }
+}

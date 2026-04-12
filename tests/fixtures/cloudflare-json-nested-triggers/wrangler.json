@@ -1,0 +1,11 @@
+{
+  "name": "my-worker",
+  "triggers": {
+    "crons": ["0 3 * * *"],
+    "extra": {
+      "deep": {
+        "nested": true
+      }
+    }
+  }
+}

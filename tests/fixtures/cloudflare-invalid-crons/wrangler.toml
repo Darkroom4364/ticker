@@ -1,0 +1,5 @@
+name = "my-worker"
+main = "src/index.ts"
+
+[triggers]
+crons = ["not-a-cron", "also bad * *"]
