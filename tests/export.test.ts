@@ -235,4 +235,84 @@ describe("toPrometheus", () => {
     const output = toPrometheus({ tasks: [] });
     expect(output.endsWith("\n")).toBe(true);
   });
+
+  it("sanitizes task name with only special characters to underscores", () => {
+    const task = makeTask({
+      name: "!!!",
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+
+    expect(output).toContain('job="___"');
+    expect(output).not.toContain('job="!!!"');
+  });
+
+  it("sanitizes unicode characters in task name to underscores", () => {
+    const task = makeTask({
+      name: "bäckup-jöb",
+      schedule: "0 2 * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+
+    expect(output).toContain('job="b_ckup_j_b"');
+    expect(output).not.toContain("bäckup");
+  });
+
+  it("handles empty string task name producing valid metric line", () => {
+    const task = makeTask({
+      name: "",
+      schedule: "* * * * *",
+      source: "crontab",
+      nextRun: new Date("2025-06-15T11:00:00Z"),
+    });
+    const output = toPrometheus({ tasks: [task] });
+
+    expect(output).toContain('job=""');
+    expect(output).toContain('schedex_jobs_total{scanner="crontab"} 1');
+  });
+
+  it("computes large positive seconds for nextRun far in the future (year 2099)", () => {
+    const futureRun = new Date("2099-01-01T00:00:00Z");
+    const task = makeTask({
+      name: "far_future",
+      schedule: "0 0 1 1 *",
+      source: "crontab",
+      nextRun: futureRun,
+    });
+    const output = toPrometheus({ tasks: [task] });
+
+    const expectedSeconds = Math.round((futureRun.getTime() - NOW.getTime()) / 1000);
+    expect(output).toContain(
+      `schedex_next_run_seconds{job="far_future",scanner="crontab"} ${expectedSeconds}`,
+    );
+    expect(expectedSeconds).toBeGreaterThan(0);
+  });
+
+  it("outputs 0 for scanner duration of 0ms", () => {
+    const output = toPrometheus({
+      tasks: [],
+      scannerResults: [
+        { scanner: "crontab", tasks: [], durationMs: 0 },
+      ],
+    });
+
+    expect(output).toContain('schedex_scan_duration_seconds{scanner="crontab"} 0');
+  });
+
+  it("sums job counts correctly for multiple tasks from the same scanner", () => {
+    const tasks: ScheduledTask[] = [
+      makeTask({ name: "a", schedule: "* * * * *", source: "crontab" }),
+      makeTask({ name: "b", schedule: "* * * * *", source: "crontab" }),
+      makeTask({ name: "c", schedule: "* * * * *", source: "crontab" }),
+      makeTask({ name: "d", schedule: "* * * * *", source: "crontab" }),
+      makeTask({ name: "e", schedule: "* * * * *", source: "crontab" }),
+    ];
+    const output = toPrometheus({ tasks });
+
+    expect(output).toContain('schedex_jobs_total{scanner="crontab"} 5');
+  });
 });
