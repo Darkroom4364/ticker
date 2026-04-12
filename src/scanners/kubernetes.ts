@@ -119,7 +119,7 @@ export class KubernetesScanner implements Scanner {
       ) {
         return [];
       }
-      return [];
+      throw error;
     }
 
     return tasks;

@@ -150,6 +150,7 @@ export class SystemdScanner implements Scanner {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       if (
+        message.includes("command not found") ||
         message.includes("Permission denied") ||
         message.includes("EACCES") ||
         message.includes("Connection refused") ||
@@ -157,7 +158,7 @@ export class SystemdScanner implements Scanner {
       ) {
         return [];
       }
-      return [];
+      throw error;
     }
 
     return tasks;

@@ -238,6 +238,14 @@ describe("KubernetesScanner", () => {
       expect(tasks).toHaveLength(0);
     });
 
+    it("throws on unexpected errors", async () => {
+      mockExecByCommand({
+        "kubectl get cronjobs": new Error("ENOMEM: not enough memory"),
+      });
+
+      await expect(scanner.scan(defaultOptions)).rejects.toThrow("ENOMEM");
+    });
+
     it("sets source to 'kubernetes' for all tasks", async () => {
       mockExecByCommand({
         "kubectl get cronjobs": CRONJOB_LIST,

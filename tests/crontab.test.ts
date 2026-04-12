@@ -195,6 +195,15 @@ describe("CrontabScanner", () => {
       expect(tasks).toHaveLength(0);
     });
 
+    it("throws on unexpected errors", async () => {
+      mockExecByCommand({
+        "crontab -l": new Error("ENOMEM: not enough memory"),
+        "which": "/usr/bin/crontab",
+      });
+
+      await expect(scanner.scan(defaultOptions)).rejects.toThrow("ENOMEM");
+    });
+
     it("returns empty array for empty crontab output", async () => {
       mockExecByCommand({
         "crontab -l": "",
