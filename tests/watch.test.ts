@@ -1,6 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ScheduledTask } from "../src/types.js";
-import { diffTasks, parseDuration, formatChanges } from "../src/watch.js";
+import { diffTasks, parseDuration, formatChanges, watch } from "../src/watch.js";
+
+vi.mock("../src/orchestrator.js", () => ({
+  orchestrate: vi.fn(),
+}));
+
+vi.mock("../src/formatters/index.js", () => ({
+  format: vi.fn(),
+}));
 
 // ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -234,5 +242,152 @@ describe("formatChanges", () => {
       timestamp: new Date("2026-04-11T22:00:00Z"),
     });
     expect(output).toContain("2026-04-11T22:00:00.000Z");
+  });
+});
+
+// ── watch() tests ────────────────────────────────────────────────────
+
+describe("watch()", () => {
+  let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+
+  // Lazily import the mocked modules so we can control return values
+  let orchestrate: ReturnType<typeof vi.fn>;
+  let formatFn: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+
+    const orchMod = await import("../src/orchestrator.js");
+    orchestrate = orchMod.orchestrate as unknown as ReturnType<typeof vi.fn>;
+
+    const fmtMod = await import("../src/formatters/index.js");
+    formatFn = fmtMod.format as unknown as ReturnType<typeof vi.fn>;
+
+    orchestrate.mockReset();
+    formatFn.mockReset();
+
+    stdoutSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  it("returns a stop function", () => {
+    orchestrate.mockResolvedValue({ tasks: [] });
+    formatFn.mockReturnValue("");
+
+    const stop = watch({ intervalMs: 30_000 });
+    expect(typeof stop).toBe("function");
+    stop();
+  });
+
+  it("first scan writes formatted output to stdout", async () => {
+    orchestrate.mockResolvedValue({ tasks: [taskA] });
+    formatFn.mockReturnValue("FORMATTED_TABLE");
+
+    const stop = watch({ intervalMs: 30_000 });
+
+    // Flush the microtask queue so the initial async runScan completes
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(formatFn).toHaveBeenCalledWith([taskA], "table");
+    expect(stdoutSpy).toHaveBeenCalledWith("FORMATTED_TABLE\n");
+
+    stop();
+  });
+
+  it("stop function clears the interval — no more scans after stop", async () => {
+    orchestrate.mockResolvedValue({ tasks: [] });
+    formatFn.mockReturnValue("");
+
+    const stop = watch({ intervalMs: 30_000 });
+
+    // Let the initial scan finish
+    await vi.advanceTimersByTimeAsync(0);
+    expect(orchestrate).toHaveBeenCalledTimes(1);
+
+    stop();
+
+    // Advance well past the next interval — no additional scans should fire
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(orchestrate).toHaveBeenCalledTimes(1);
+  });
+
+  it("verbose mode writes initial scan info to stderr", async () => {
+    orchestrate.mockResolvedValue({ tasks: [taskA, taskB] });
+    formatFn.mockReturnValue("TABLE");
+
+    const stop = watch({ intervalMs: 30_000, verbose: true });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Initial scan complete: 2 task(s) found"),
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Polling every 30s"),
+    );
+
+    stop();
+  });
+
+  it("onChanges callback fires when diff has changes", async () => {
+    const onChanges = vi.fn();
+
+    // First scan returns taskA, second scan returns taskA + taskB (added)
+    orchestrate
+      .mockResolvedValueOnce({ tasks: [taskA] })
+      .mockResolvedValueOnce({ tasks: [taskA, taskB] });
+    formatFn.mockReturnValue("TABLE");
+
+    const stop = watch({ intervalMs: 30_000, onChanges });
+
+    // Let first scan complete
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onChanges).not.toHaveBeenCalled();
+
+    // Advance to trigger second scan
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(onChanges).toHaveBeenCalledTimes(1);
+    const changes = onChanges.mock.calls[0][0];
+    expect(changes.added).toHaveLength(1);
+    expect(changes.added[0].name).toBe("daily-report");
+
+    stop();
+  });
+
+  it("scanInFlight prevents overlapping scans", async () => {
+    // Make orchestrate return a promise that we control manually
+    let resolveFirst!: (v: { tasks: ScheduledTask[] }) => void;
+    orchestrate.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveFirst = resolve; }),
+    );
+    formatFn.mockReturnValue("TABLE");
+
+    const stop = watch({ intervalMs: 10_000 });
+
+    // The initial runScan fires but hasn't resolved yet (scanInFlight = true)
+    // Advance past the interval to trigger the next scheduled scan
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // orchestrate should still only have been called once because the first
+    // scan is still in flight and the guard prevents a second invocation
+    expect(orchestrate).toHaveBeenCalledTimes(1);
+
+    // Now resolve the first scan
+    resolveFirst({ tasks: [taskA] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Next interval tick should now be able to scan
+    orchestrate.mockResolvedValueOnce({ tasks: [taskA] });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(orchestrate).toHaveBeenCalledTimes(2);
+
+    stop();
   });
 });
