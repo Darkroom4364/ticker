@@ -1,6 +1,6 @@
 # schedex
 
-![CI](https://github.com/Darkroom4364/ticker/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Darkroom4364/schedex/actions/workflows/ci.yml/badge.svg)
 [![npm](https://img.shields.io/npm/v/schedex)](https://www.npmjs.com/package/schedex)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 

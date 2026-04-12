@@ -11,8 +11,8 @@ Thanks for your interest in contributing to schedex! This guide covers everythin
 
 ```bash
 # Clone the repo
-git clone https://github.com/Darkroom4364/ticker.git
-cd ticker
+git clone https://github.com/Darkroom4364/schedex.git
+cd schedex
 
 # Install dependencies
 npm install
@@ -64,4 +64,4 @@ If you're adding a new infrastructure scanner:
 
 ## Reporting Issues
 
-Found a bug or have a feature request? [Open an issue](https://github.com/Darkroom4364/ticker/issues).
+Found a bug or have a feature request? [Open an issue](https://github.com/Darkroom4364/schedex/issues).
