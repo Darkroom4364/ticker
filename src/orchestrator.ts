@@ -1,3 +1,4 @@
+import { resolve, relative } from "node:path";
 import { PartialScanError } from "./types.js";
 import type { Scanner, ScanOptions, ScheduledTask } from "./types.js";
 import {
@@ -10,9 +11,11 @@ import {
   CloudflareScanner,
   DockerCronScanner,
 } from "./scanners/index.js";
+import { discoverDirectories } from "./utils/recursive.js";
 
 export interface OrchestratorOptions extends ScanOptions {
   verbose?: boolean;
+  recursive?: string;
 }
 
 export interface ScannerResult {
@@ -22,18 +25,55 @@ export interface ScannerResult {
   durationMs: number;
 }
 
-/** All registered scanners */
-function createAllScanners(): Scanner[] {
+function createApiScanners(): Scanner[] {
   return [
     new CrontabScanner(),
     new SystemdScanner(),
     new KubernetesScanner(),
     new EventBridgeScanner(),
-    new GitHubActionsScanner(),
-    new VercelScanner(),
-    new CloudflareScanner(),
-    new DockerCronScanner(),
   ];
+}
+
+function createFileScanners(cwd?: string): Scanner[] {
+  return [
+    new GitHubActionsScanner(cwd),
+    new VercelScanner(cwd),
+    new CloudflareScanner(cwd),
+    new DockerCronScanner(cwd),
+  ];
+}
+
+function withSourcePrefix(
+  scanner: Scanner,
+  rootPath: string,
+  scanDir: string,
+): Scanner {
+  if (scanDir === rootPath) return scanner;
+  const rel = relative(rootPath, scanDir);
+  return {
+    name: scanner.name,
+    isAvailable: () => scanner.isAvailable(),
+    async scan(options) {
+      const tasks = await scanner.scan(options);
+      return tasks.map((t) => ({ ...t, source: `${t.source} (${rel})` }));
+    },
+  };
+}
+
+/** All registered scanners */
+function createAllScanners(): Scanner[] {
+  return [...createApiScanners(), ...createFileScanners()];
+}
+
+async function createAllScannersRecursive(
+  recursivePath: string,
+): Promise<Scanner[]> {
+  const rootPath = resolve(recursivePath);
+  const dirs = await discoverDirectories(rootPath);
+  const fileScanners = dirs.flatMap((dir) =>
+    createFileScanners(dir).map((s) => withSourcePrefix(s, rootPath, dir)),
+  );
+  return [...createApiScanners(), ...fileScanners];
 }
 
 /**
@@ -43,7 +83,11 @@ export async function orchestrate(
   options: OrchestratorOptions,
   scanners?: Scanner[],
 ): Promise<{ tasks: ScheduledTask[]; results: ScannerResult[] }> {
-  const allScanners = scanners ?? createAllScanners();
+  const allScanners =
+    scanners ??
+    (options.recursive
+      ? await createAllScannersRecursive(options.recursive)
+      : createAllScanners());
 
   // Filter to selected scanners if specified
   const selected = options.scanners

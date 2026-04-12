@@ -27,12 +27,17 @@ program
   )
   .option("-v, --verbose", "show scanner timing and error details")
   .option("-c, --config <path>", "path to config file")
+  .option(
+    "-r, --recursive [path]",
+    "recursively scan subdirectories for file-based scanners",
+  )
   .action(
     async (options: {
       format?: string;
       scanners?: string;
       verbose?: boolean;
       config?: string;
+      recursive?: boolean | string;
     }) => {
       // Load config file
       let config;
@@ -63,10 +68,16 @@ program
 
       const verbose = options.verbose ?? config?.verbose ?? undefined;
 
+      const recursive =
+        options.recursive === true
+          ? process.cwd()
+          : (options.recursive || config?.recursive || undefined);
+
       const { tasks, results } = await orchestrate({
         scanners: scannerNames,
         format: formatName,
         verbose,
+        recursive,
       });
 
       // Check if all scanners failed
@@ -95,12 +106,17 @@ program
     "specific scanners to run (comma-separated, e.g. crontab,kubernetes)",
   )
   .option("-v, --verbose", "show timing and unchanged scans")
+  .option(
+    "-r, --recursive [path]",
+    "recursively scan subdirectories for file-based scanners",
+  )
   .action(
     (options: {
       interval: string;
       format: string;
       scanners?: string;
       verbose?: boolean;
+      recursive?: boolean | string;
     }) => {
       const formatName = options.format as "table" | "json" | "yaml";
       if (!["table", "json", "yaml"].includes(formatName)) {
@@ -123,11 +139,15 @@ program
         ? options.scanners.split(",").map((s) => s.trim())
         : undefined;
 
+      const recursive =
+        options.recursive === true ? process.cwd() : options.recursive || undefined;
+
       const stop = watch({
         intervalMs,
         scanners: scannerNames,
         format: formatName,
         verbose: options.verbose,
+        recursive,
       });
 
       // Graceful shutdown on SIGINT
@@ -146,23 +166,37 @@ program
     "specific scanners to run (comma-separated)",
   )
   .option("-v, --verbose", "show scanner timing and error details")
-  .action(async (options: { scanners?: string; verbose?: boolean }) => {
-    const scannerNames = options.scanners
-      ? options.scanners.split(",").map((s) => s.trim())
-      : undefined;
+  .option(
+    "-r, --recursive [path]",
+    "recursively scan subdirectories for file-based scanners",
+  )
+  .action(
+    async (options: {
+      scanners?: string;
+      verbose?: boolean;
+      recursive?: boolean | string;
+    }) => {
+      const scannerNames = options.scanners
+        ? options.scanners.split(",").map((s) => s.trim())
+        : undefined;
 
-    const { tasks } = await orchestrate({
-      scanners: scannerNames,
-      verbose: options.verbose,
-    });
+      const recursive =
+        options.recursive === true ? process.cwd() : options.recursive || undefined;
 
-    const report = checkHealth(tasks);
-    console.log(formatHealthReport(report));
+      const { tasks } = await orchestrate({
+        scanners: scannerNames,
+        verbose: options.verbose,
+        recursive,
+      });
 
-    if (report.warnings.some((w) => w.level === "error")) {
-      process.exit(1);
-    }
-  });
+      const report = checkHealth(tasks);
+      console.log(formatHealthReport(report));
+
+      if (report.warnings.some((w) => w.level === "error")) {
+        process.exit(1);
+      }
+    },
+  );
 
 program
   .command("export")
@@ -172,19 +206,33 @@ program
     "specific scanners to run (comma-separated)",
   )
   .option("-v, --verbose", "show scanner timing and error details")
-  .action(async (options: { scanners?: string; verbose?: boolean }) => {
-    const scannerNames = options.scanners
-      ? options.scanners.split(",").map((s) => s.trim())
-      : undefined;
+  .option(
+    "-r, --recursive [path]",
+    "recursively scan subdirectories for file-based scanners",
+  )
+  .action(
+    async (options: {
+      scanners?: string;
+      verbose?: boolean;
+      recursive?: boolean | string;
+    }) => {
+      const scannerNames = options.scanners
+        ? options.scanners.split(",").map((s) => s.trim())
+        : undefined;
 
-    const { tasks, results } = await orchestrate({
-      scanners: scannerNames,
-      verbose: options.verbose,
-    });
+      const recursive =
+        options.recursive === true ? process.cwd() : options.recursive || undefined;
 
-    const output = toPrometheus({ tasks, scannerResults: results });
-    process.stdout.write(output);
-  });
+      const { tasks, results } = await orchestrate({
+        scanners: scannerNames,
+        verbose: options.verbose,
+        recursive,
+      });
+
+      const output = toPrometheus({ tasks, scannerResults: results });
+      process.stdout.write(output);
+    },
+  );
 
 program
   .command("completions")

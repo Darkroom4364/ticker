@@ -7,6 +7,7 @@ export interface WatchOptions {
   scanners?: string[];
   format?: "table" | "json" | "yaml";
   verbose?: boolean;
+  recursive?: string;
   onChanges?: (changes: WatchChanges) => void;
 }
 
@@ -153,6 +154,7 @@ export function watch(options: WatchOptions): () => void {
         scanners: options.scanners,
         format: formatName,
         verbose: options.verbose,
+        recursive: options.recursive,
       });
 
       scanCount++;

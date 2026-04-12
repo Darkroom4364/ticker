@@ -10,6 +10,8 @@ export interface SchedexConfig {
   scanners?: string[];
   /** Show verbose output */
   verbose?: boolean;
+  /** Recursively scan subdirectories for file-based scanners */
+  recursive?: string;
 }
 
 const CONFIG_FILENAME = ".schedexrc.yml";
@@ -58,6 +60,10 @@ async function parseConfigFile(path: string): Promise<SchedexConfig> {
 
   if (parsed.verbose !== undefined) {
     config.verbose = Boolean(parsed.verbose);
+  }
+
+  if (parsed.recursive !== undefined) {
+    config.recursive = String(parsed.recursive);
   }
 
   return config;
