@@ -56,10 +56,14 @@ export class KubernetesScanner implements Scanner {
     const tasks: ScheduledTask[] = [];
 
     try {
-      const { stdout } = await execFileAsync("kubectl", ["get", "cronjobs", "-A", "-o", "json"], {
-        timeout: EXEC_TIMEOUT,
-        maxBuffer: MAX_BUFFER,
-      });
+      const { stdout } = await execFileAsync(
+        "kubectl",
+        ["get", "cronjobs", "-A", "-o", "json"],
+        {
+          timeout: EXEC_TIMEOUT,
+          maxBuffer: MAX_BUFFER,
+        },
+      );
       const list: K8sCronJobList = JSON.parse(stdout);
 
       for (const cronJob of list.items) {
@@ -89,7 +93,8 @@ export class KubernetesScanner implements Scanner {
             namespace: metadata.namespace,
           };
           if (image) taskMetadata.image = image;
-          if (status?.lastScheduleTime) taskMetadata.lastScheduleTime = status.lastScheduleTime;
+          if (status?.lastScheduleTime)
+            taskMetadata.lastScheduleTime = status.lastScheduleTime;
           if (spec.suspend) taskMetadata.suspended = "true";
 
           const task: ScheduledTask = {

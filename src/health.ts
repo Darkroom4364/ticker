@@ -133,24 +133,33 @@ export function checkHealth(tasks: ScheduledTask[]): HealthReport {
  * Format a health report as human-readable text.
  */
 export function formatHealthReport(report: HealthReport): string {
-  const warningCount = report.warnings.filter((w) => w.level === "error" || w.level === "warning").length;
+  const warningCount = report.warnings.filter(
+    (w) => w.level === "error" || w.level === "warning",
+  ).length;
   const infoCount = report.warnings.filter((w) => w.level === "info").length;
 
   const parts: string[] = [];
 
   // Summary line
   const counts: string[] = [];
-  if (warningCount > 0) counts.push(`${warningCount} warning${warningCount !== 1 ? "s" : ""}`);
+  if (warningCount > 0)
+    counts.push(`${warningCount} warning${warningCount !== 1 ? "s" : ""}`);
   if (infoCount > 0) counts.push(`${infoCount} info`);
 
-  const summary = counts.length > 0
-    ? `Health Report: ${report.totalTasks} tasks analyzed, ${counts.join(", ")}`
-    : `Health Report: ${report.totalTasks} tasks analyzed, all healthy`;
+  const summary =
+    counts.length > 0
+      ? `Health Report: ${report.totalTasks} tasks analyzed, ${counts.join(", ")}`
+      : `Health Report: ${report.totalTasks} tasks analyzed, all healthy`;
   parts.push(summary);
 
   // Individual warnings
   for (const w of report.warnings) {
-    const prefix = w.level === "error" ? "[ERROR]" : w.level === "warning" ? "[WARN]" : "[INFO]";
+    const prefix =
+      w.level === "error"
+        ? "[ERROR]"
+        : w.level === "warning"
+          ? "[WARN]"
+          : "[INFO]";
     parts.push(`${prefix} ${w.code}: ${w.message}`);
   }
 
@@ -169,7 +178,13 @@ function isTooFrequent(schedule: string): boolean {
   if (fields.length !== 5) return false;
 
   // Every minute: minute field is "*" and hour/dom/month/dow are all wildcards
-  return fields[0] === "*" && fields[1] === "*" && fields[2] === "*" && fields[3] === "*" && fields[4] === "*";
+  return (
+    fields[0] === "*" &&
+    fields[1] === "*" &&
+    fields[2] === "*" &&
+    fields[3] === "*" &&
+    fields[4] === "*"
+  );
 }
 
 /** Normalize a schedule string for deduplication. */
@@ -186,10 +201,17 @@ function isSuspended(task: ScheduledTask): boolean {
     const k = key.toLowerCase();
     const v = value.toLowerCase();
 
-    if (k === "suspended" && (v === "true" || v === "yes" || v === "1")) return true;
-    if (k === "enabled" && (v === "false" || v === "no" || v === "0")) return true;
-    if (k === "disabled" && (v === "true" || v === "yes" || v === "1")) return true;
-    if (k === "status" && (v === "suspended" || v === "disabled" || v === "inactive")) return true;
+    if (k === "suspended" && (v === "true" || v === "yes" || v === "1"))
+      return true;
+    if (k === "enabled" && (v === "false" || v === "no" || v === "0"))
+      return true;
+    if (k === "disabled" && (v === "true" || v === "yes" || v === "1"))
+      return true;
+    if (
+      k === "status" &&
+      (v === "suspended" || v === "disabled" || v === "inactive")
+    )
+      return true;
   }
 
   return false;

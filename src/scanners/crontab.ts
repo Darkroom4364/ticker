@@ -38,7 +38,9 @@ function deriveTaskName(command: string): string {
  *   min hour dom mon dow command
  *   @daily command
  */
-function parseUserCronLine(line: string): { schedule: string; command: string } | null {
+function parseUserCronLine(
+  line: string,
+): { schedule: string; command: string } | null {
   const trimmed = line.trim();
 
   // Handle @-shortcut entries
@@ -65,7 +67,9 @@ function parseUserCronLine(line: string): { schedule: string; command: string } 
  *   min hour dom mon dow user command
  *   @daily user command
  */
-function parseSystemCronLine(line: string): { schedule: string; command: string; user: string } | null {
+function parseSystemCronLine(
+  line: string,
+): { schedule: string; command: string; user: string } | null {
   const trimmed = line.trim();
 
   // Handle @-shortcut entries
@@ -170,7 +174,11 @@ export class CrontabScanner implements Scanner {
         const parsed = parseUserCronLine(line);
         if (!parsed) continue;
 
-        tasks.push(buildTask(parsed.schedule, parsed.command, "crontab", { type: "user" }));
+        tasks.push(
+          buildTask(parsed.schedule, parsed.command, "crontab", {
+            type: "user",
+          }),
+        );
       }
     } catch (error: unknown) {
       // "no crontab for user" or permission denied — return empty

@@ -30,7 +30,7 @@ function awsCronToStandard(awsCron: string): string {
  */
 function parseRateExpression(
   rateExpr: string,
-  now: Date
+  now: Date,
 ): { interval: string; nextRun: Date } {
   const match = rateExpr.match(/^rate\((\d+)\s+(minutes?|hours?|days?)\)$/i);
   if (!match) {
@@ -92,7 +92,7 @@ export class EventBridgeScanner implements Scanner {
     try {
       do {
         const response = await this.client.send(
-          new ListRulesCommand({ NextToken: nextToken })
+          new ListRulesCommand({ NextToken: nextToken }),
         );
 
         for (const rule of response.Rules ?? []) {
