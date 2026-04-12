@@ -179,7 +179,7 @@ function isTooFrequent(schedule: string): boolean {
 
   // Every minute: minute field is "*" and hour/dom/month/dow are all wildcards
   return (
-    fields[0] === "*" &&
+    (fields[0] === "*" || fields[0] === "*/1" || fields[0] === "0-59") &&
     fields[1] === "*" &&
     fields[2] === "*" &&
     fields[3] === "*" &&
