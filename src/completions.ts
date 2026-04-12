@@ -1,6 +1,12 @@
 export type Shell = "bash" | "zsh" | "fish";
 
-const SUBCOMMANDS = ["scan", "watch", "check", "export", "completions"] as const;
+const SUBCOMMANDS = [
+  "scan",
+  "watch",
+  "check",
+  "export",
+  "completions",
+] as const;
 const FORMAT_VALUES = ["table", "json", "yaml"] as const;
 const SCANNER_NAMES = [
   "crontab",
