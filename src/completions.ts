@@ -1,6 +1,6 @@
 export type Shell = "bash" | "zsh" | "fish";
 
-const SUBCOMMANDS = ["scan", "watch", "completions"] as const;
+const SUBCOMMANDS = ["scan", "watch", "check", "export", "completions"] as const;
 const FORMAT_VALUES = ["table", "json", "yaml"] as const;
 const SCANNER_NAMES = [
   "crontab",
@@ -23,6 +23,8 @@ function generateBash(): string {
   commands="${SUBCOMMANDS.join(" ")}"
   scan_opts="--format --scanners --verbose --config"
   watch_opts="--interval --format --scanners --verbose"
+  check_opts="--scanners --verbose"
+  export_opts="--scanners --verbose"
   formats="${FORMAT_VALUES.join(" ")}"
   scanners="${SCANNER_NAMES.join(" ")}"
   shells="${SHELL_NAMES.join(" ")}"
@@ -31,7 +33,7 @@ function generateBash(): string {
   local subcmd=""
   for ((i=1; i < COMP_CWORD; i++)); do
     case "\${COMP_WORDS[i]}" in
-      scan|watch|completions)
+      scan|watch|check|export|completions)
         subcmd="\${COMP_WORDS[i]}"
         break
         ;;
@@ -61,6 +63,12 @@ function generateBash(): string {
     watch)
       COMPREPLY=( $(compgen -W "$watch_opts" -- "$cur") )
       ;;
+    check)
+      COMPREPLY=( $(compgen -W "$check_opts" -- "$cur") )
+      ;;
+    export)
+      COMPREPLY=( $(compgen -W "$export_opts" -- "$cur") )
+      ;;
     completions)
       COMPREPLY=( $(compgen -W "$shells" -- "$cur") )
       ;;
@@ -80,6 +88,8 @@ _schedex() {
   commands=(
     'scan:Scan infrastructure for scheduled jobs'
     'watch:Poll and report changes'
+    'check:Run health checks on discovered schedules'
+    'export:Export metrics in Prometheus format'
     'completions:Generate shell completions'
   )
   formats=(table json yaml)
@@ -108,6 +118,16 @@ _schedex() {
             '(-s --scanners)'{-s,--scanners}'[Scanners to run]:scanner:($scanners)' \\
             '(-v --verbose)'{-v,--verbose}'[Show timing and unchanged scans]'
           ;;
+        check)
+          _arguments \\
+            '(-s --scanners)'{-s,--scanners}'[Scanners to run]:scanner:($scanners)' \\
+            '(-v --verbose)'{-v,--verbose}'[Show scanner timing and error details]'
+          ;;
+        export)
+          _arguments \\
+            '(-s --scanners)'{-s,--scanners}'[Scanners to run]:scanner:($scanners)' \\
+            '(-v --verbose)'{-v,--verbose}'[Show scanner timing and error details]'
+          ;;
         completions)
           _arguments '1:shell:(bash zsh fish)'
           ;;
@@ -128,6 +148,8 @@ function generateFish(): string {
     "# Subcommands",
     `complete -c schedex -n '__fish_use_subcommand' -a 'scan' -d 'Scan infrastructure for scheduled jobs'`,
     `complete -c schedex -n '__fish_use_subcommand' -a 'watch' -d 'Poll and report changes'`,
+    `complete -c schedex -n '__fish_use_subcommand' -a 'check' -d 'Run health checks on discovered schedules'`,
+    `complete -c schedex -n '__fish_use_subcommand' -a 'export' -d 'Export metrics in Prometheus format'`,
     `complete -c schedex -n '__fish_use_subcommand' -a 'completions' -d 'Generate shell completions'`,
     "",
     "# scan options",
@@ -141,6 +163,14 @@ function generateFish(): string {
     `complete -c schedex -n '__fish_seen_subcommand_from watch' -s f -l format -d 'Output format' -xa '${FORMAT_VALUES.join(" ")}'`,
     `complete -c schedex -n '__fish_seen_subcommand_from watch' -s s -l scanners -d 'Scanners to run' -xa '${SCANNER_NAMES.join(" ")}'`,
     `complete -c schedex -n '__fish_seen_subcommand_from watch' -s v -l verbose -d 'Show timing and unchanged scans'`,
+    "",
+    "# check options",
+    `complete -c schedex -n '__fish_seen_subcommand_from check' -s s -l scanners -d 'Scanners to run' -xa '${SCANNER_NAMES.join(" ")}'`,
+    `complete -c schedex -n '__fish_seen_subcommand_from check' -s v -l verbose -d 'Show scanner timing and error details'`,
+    "",
+    "# export options",
+    `complete -c schedex -n '__fish_seen_subcommand_from export' -s s -l scanners -d 'Scanners to run' -xa '${SCANNER_NAMES.join(" ")}'`,
+    `complete -c schedex -n '__fish_seen_subcommand_from export' -s v -l verbose -d 'Show scanner timing and error details'`,
     "",
     "# completions argument",
     `complete -c schedex -n '__fish_seen_subcommand_from completions' -xa '${SHELL_NAMES.join(" ")}'`,
