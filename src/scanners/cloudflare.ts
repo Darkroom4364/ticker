@@ -20,9 +20,12 @@ function parseCronsFromToml(content: string): string[] {
   if (!triggersMatch || triggersMatch.index === undefined) return [];
 
   // Get text after [triggers] up to the next section header or end of file
-  const afterTriggers = content.slice(triggersMatch.index + triggersMatch[0].length);
+  const afterTriggers = content.slice(
+    triggersMatch.index + triggersMatch[0].length,
+  );
   const nextSection = afterTriggers.search(/^\s*\[/m);
-  const triggersBlock = nextSection === -1 ? afterTriggers : afterTriggers.slice(0, nextSection);
+  const triggersBlock =
+    nextSection === -1 ? afterTriggers : afterTriggers.slice(0, nextSection);
 
   // Find crons = [...] in the triggers block
   const cronsMatch = triggersBlock.match(/^\s*crons\s*=\s*\[([^\]]*)\]/m);
@@ -63,7 +66,8 @@ export class CloudflareScanner implements Scanner {
 
   async scan(_options: ScanOptions): Promise<ScheduledTask[]> {
     // Try wrangler.toml first, then wrangler.json
-    const cronExpressions = await this.readFromToml() ?? await this.readFromJson();
+    const cronExpressions =
+      (await this.readFromToml()) ?? (await this.readFromJson());
 
     if (!cronExpressions || cronExpressions.length === 0) {
       return [];

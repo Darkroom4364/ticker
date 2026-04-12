@@ -36,7 +36,9 @@ function deriveTaskName(command: string): string {
 /**
  * Parse a user-format crontab line (5 fields + command or @shortcut command).
  */
-function parseCronLine(line: string): { schedule: string; command: string } | null {
+function parseCronLine(
+  line: string,
+): { schedule: string; command: string } | null {
   const trimmed = line.trim();
 
   // Handle @-shortcut entries

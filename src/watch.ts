@@ -30,7 +30,7 @@ function taskKey(task: ScheduledTask): string {
  */
 export function diffTasks(
   previous: ScheduledTask[],
-  current: ScheduledTask[]
+  current: ScheduledTask[],
 ): WatchChanges {
   const prevMap = new Map<string, ScheduledTask>();
   for (const task of previous) {
@@ -75,7 +75,7 @@ export function formatChanges(changes: WatchChanges): string {
 
   const lines: string[] = [];
   lines.push(
-    `[${changes.timestamp.toISOString()}] ${totalChanges} change${totalChanges !== 1 ? "s" : ""} detected:`
+    `[${changes.timestamp.toISOString()}] ${totalChanges} change${totalChanges !== 1 ? "s" : ""} detected:`,
   );
 
   for (const task of changes.added) {
@@ -84,7 +84,7 @@ export function formatChanges(changes: WatchChanges): string {
 
   for (const { before, after } of changes.modified) {
     lines.push(
-      `  ~ ${after.name} (${after.source}) \u2014 schedule changed: ${before.schedule} \u2192 ${after.schedule}`
+      `  ~ ${after.name} (${after.source}) \u2014 schedule changed: ${before.schedule} \u2192 ${after.schedule}`,
     );
   }
 
@@ -103,7 +103,7 @@ export function parseDuration(input: string): number {
   const match = input.trim().match(/^(\d+)\s*(s|m|h)$/i);
   if (!match) {
     throw new Error(
-      `Invalid duration '${input}'. Use a number followed by s, m, or h (e.g. 30s, 5m, 1h).`
+      `Invalid duration '${input}'. Use a number followed by s, m, or h (e.g. 30s, 5m, 1h).`,
     );
   }
 
@@ -126,9 +126,7 @@ export function parseDuration(input: string): number {
   }
 
   if (ms < 10_000) {
-    throw new Error(
-      `Interval must be at least 10 seconds. Got ${input}.`
-    );
+    throw new Error(`Interval must be at least 10 seconds. Got ${input}.`);
   }
 
   return ms;
@@ -165,7 +163,7 @@ export function watch(options: WatchOptions): () => void {
         process.stdout.write(output + "\n");
         if (options.verbose) {
           process.stderr.write(
-            `[watch] Initial scan complete: ${tasks.length} task(s) found. Polling every ${options.intervalMs / 1000}s.\n`
+            `[watch] Initial scan complete: ${tasks.length} task(s) found. Polling every ${options.intervalMs / 1000}s.\n`,
           );
         }
       } else {
@@ -184,7 +182,7 @@ export function watch(options: WatchOptions): () => void {
           }
         } else if (options.verbose) {
           process.stderr.write(
-            `[${new Date().toISOString()}] No changes detected.\n`
+            `[${new Date().toISOString()}] No changes detected.\n`,
           );
         }
       }
@@ -213,7 +211,7 @@ export function watch(options: WatchOptions): () => void {
     clearInterval(intervalId);
     if (options.verbose) {
       process.stderr.write(
-        `\n[watch] Stopped after ${scanCount} scan(s), ${totalChanges} total change(s) detected.\n`
+        `\n[watch] Stopped after ${scanCount} scan(s), ${totalChanges} total change(s) detected.\n`,
       );
     }
   };

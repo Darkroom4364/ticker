@@ -30,7 +30,9 @@ export function toPrometheus(options: ExportOptions): string {
     jobCounts.set(scanner, (jobCounts.get(scanner) ?? 0) + 1);
   }
 
-  lines.push("# HELP schedex_jobs_total Total number of discovered scheduled jobs");
+  lines.push(
+    "# HELP schedex_jobs_total Total number of discovered scheduled jobs",
+  );
   lines.push("# TYPE schedex_jobs_total gauge");
   if (jobCounts.size === 0 && !scannerResults) {
     // No tasks and no scanner info — emit a bare zero
@@ -38,7 +40,9 @@ export function toPrometheus(options: ExportOptions): string {
   } else if (jobCounts.size === 0 && scannerResults) {
     // Emit zero for each known scanner
     for (const sr of scannerResults) {
-      lines.push(`schedex_jobs_total{scanner="${sanitizeLabel(sr.scanner)}"} 0`);
+      lines.push(
+        `schedex_jobs_total{scanner="${sanitizeLabel(sr.scanner)}"} 0`,
+      );
     }
   } else {
     // If we have scannerResults, ensure scanners with 0 tasks are represented
@@ -58,7 +62,9 @@ export function toPrometheus(options: ExportOptions): string {
   // --- schedex_next_run_seconds ---
   const tasksWithNextRun = tasks.filter((t) => t.nextRun != null);
   lines.push("");
-  lines.push("# HELP schedex_next_run_seconds Seconds until the next scheduled run");
+  lines.push(
+    "# HELP schedex_next_run_seconds Seconds until the next scheduled run",
+  );
   lines.push("# TYPE schedex_next_run_seconds gauge");
   const now = Date.now();
   for (const task of tasksWithNextRun) {
@@ -66,7 +72,7 @@ export function toPrometheus(options: ExportOptions): string {
     const jobLabel = sanitizeLabel(task.name);
     const scannerLabel = sanitizeLabel(task.source);
     lines.push(
-      `schedex_next_run_seconds{job="${jobLabel}",scanner="${scannerLabel}"} ${seconds}`
+      `schedex_next_run_seconds{job="${jobLabel}",scanner="${scannerLabel}"} ${seconds}`,
     );
   }
 
@@ -74,12 +80,14 @@ export function toPrometheus(options: ExportOptions): string {
   if (scannerResults) {
     // schedex_scan_duration_seconds
     lines.push("");
-    lines.push("# HELP schedex_scan_duration_seconds Time taken for each scanner to complete");
+    lines.push(
+      "# HELP schedex_scan_duration_seconds Time taken for each scanner to complete",
+    );
     lines.push("# TYPE schedex_scan_duration_seconds gauge");
     for (const sr of scannerResults) {
       const durationSec = (sr.durationMs / 1000).toFixed(3);
       lines.push(
-        `schedex_scan_duration_seconds{scanner="${sanitizeLabel(sr.scanner)}"} ${parseFloat(durationSec)}`
+        `schedex_scan_duration_seconds{scanner="${sanitizeLabel(sr.scanner)}"} ${parseFloat(durationSec)}`,
       );
     }
 
@@ -87,11 +95,13 @@ export function toPrometheus(options: ExportOptions): string {
     const errored = scannerResults.filter((sr) => sr.error);
     if (errored.length > 0) {
       lines.push("");
-      lines.push("# HELP schedex_scanner_errors_total Number of scanner errors");
+      lines.push(
+        "# HELP schedex_scanner_errors_total Number of scanner errors",
+      );
       lines.push("# TYPE schedex_scanner_errors_total gauge");
       for (const sr of errored) {
         lines.push(
-          `schedex_scanner_errors_total{scanner="${sanitizeLabel(sr.scanner)}"} 1`
+          `schedex_scanner_errors_total{scanner="${sanitizeLabel(sr.scanner)}"} 1`,
         );
       }
     }

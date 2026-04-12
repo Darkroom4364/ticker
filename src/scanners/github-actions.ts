@@ -41,9 +41,7 @@ export class GitHubActionsScanner implements Scanner {
     let files: string[];
     try {
       const entries = await readdir(this.workflowsDir);
-      files = entries.filter(
-        (f) => f.endsWith(".yml") || f.endsWith(".yaml")
-      );
+      files = entries.filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
     } catch {
       return [];
     }
@@ -60,9 +58,7 @@ export class GitHubActionsScanner implements Scanner {
         if (schedules.length === 0) continue;
 
         const workflowName = workflow.name ?? file;
-        const jobNames = workflow.jobs
-          ? Object.keys(workflow.jobs)
-          : [];
+        const jobNames = workflow.jobs ? Object.keys(workflow.jobs) : [];
 
         for (const cronExpr of schedules) {
           let nextRun: Date | undefined;
@@ -111,7 +107,7 @@ export class GitHubActionsScanner implements Scanner {
         (entry): entry is { cron: string } =>
           typeof entry === "object" &&
           entry !== null &&
-          typeof entry.cron === "string"
+          typeof entry.cron === "string",
       )
       .map((entry) => entry.cron);
   }

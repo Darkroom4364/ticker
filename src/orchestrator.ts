@@ -41,15 +41,13 @@ function createAllScanners(): Scanner[] {
  */
 export async function orchestrate(
   options: OrchestratorOptions,
-  scanners?: Scanner[]
+  scanners?: Scanner[],
 ): Promise<{ tasks: ScheduledTask[]; results: ScannerResult[] }> {
   const allScanners = scanners ?? createAllScanners();
 
   // Filter to selected scanners if specified
   const selected = options.scanners
-    ? allScanners.filter((s) =>
-        options.scanners!.includes(s.name)
-      )
+    ? allScanners.filter((s) => options.scanners!.includes(s.name))
     : allScanners;
 
   // Run all scanners concurrently
@@ -74,8 +72,7 @@ export async function orchestrate(
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       // PartialScanError carries tasks collected before the failure
-      const partialTasks =
-        error instanceof PartialScanError ? error.tasks : [];
+      const partialTasks = error instanceof PartialScanError ? error.tasks : [];
       return {
         scanner: scanner.name,
         tasks: partialTasks,
@@ -104,7 +101,7 @@ export async function orchestrate(
   for (const result of scannerResults) {
     if (result.error) {
       process.stderr.write(
-        `Warning: Scanner '${result.scanner}' failed: ${result.error}\n`
+        `Warning: Scanner '${result.scanner}' failed: ${result.error}\n`,
       );
     }
     if (options.verbose) {
@@ -112,7 +109,7 @@ export async function orchestrate(
         ? `FAILED (${result.error})`
         : `OK (${result.tasks.length} tasks)`;
       process.stderr.write(
-        `[${result.scanner}] ${status} in ${result.durationMs}ms\n`
+        `[${result.scanner}] ${status} in ${result.durationMs}ms\n`,
       );
     }
   }

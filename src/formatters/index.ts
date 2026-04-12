@@ -12,7 +12,7 @@ export { formatYaml } from "./yaml.js";
  */
 export function format(
   tasks: ScheduledTask[],
-  formatName: "table" | "json" | "yaml"
+  formatName: "table" | "json" | "yaml",
 ): string {
   switch (formatName) {
     case "table":

@@ -159,7 +159,7 @@ export function generateCompletions(shell: Shell): string {
       return generateFish();
     default:
       throw new Error(
-        `Unsupported shell: ${shell as string}. Supported shells: bash, zsh, fish`
+        `Unsupported shell: ${shell as string}. Supported shells: bash, zsh, fish`,
       );
   }
 }

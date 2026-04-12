@@ -23,7 +23,9 @@ function parseTimerOutput(stdout: string): Array<{
   const results: Array<{ next: string; unit: string; activates: string }> = [];
 
   // Find the header line
-  const headerIndex = lines.findIndex((line) => line.includes("NEXT") && line.includes("UNIT"));
+  const headerIndex = lines.findIndex(
+    (line) => line.includes("NEXT") && line.includes("UNIT"),
+  );
   if (headerIndex === -1) return results;
 
   const headerLine = lines[headerIndex];
@@ -45,12 +47,12 @@ function parseTimerOutput(stdout: string): Array<{
     if (line.length < unitCol) continue;
 
     const next = line.substring(nextCol, leftCol).trim();
-    const unitPart = activatesCol >= 0
-      ? line.substring(unitCol, activatesCol).trim()
-      : line.substring(unitCol).trim();
-    const activates = activatesCol >= 0
-      ? line.substring(activatesCol).trim()
-      : "";
+    const unitPart =
+      activatesCol >= 0
+        ? line.substring(unitCol, activatesCol).trim()
+        : line.substring(unitCol).trim();
+    const activates =
+      activatesCol >= 0 ? line.substring(activatesCol).trim() : "";
 
     if (unitPart) {
       results.push({ next, unit: unitPart, activates });
@@ -64,7 +66,8 @@ function parseTimerOutput(stdout: string): Array<{
 async function getTimerCalendar(unit: string): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync(
-      "systemctl", ["show", unit, "--property=TimersCalendar", "--no-pager"],
+      "systemctl",
+      ["show", unit, "--property=TimersCalendar", "--no-pager"],
       { timeout: 5_000 },
     );
     // Output format: TimersCalendar={ OnCalendar=daily ; next_elapse=Mon 2025-01-20 00:00:00 UTC }
@@ -77,10 +80,13 @@ async function getTimerCalendar(unit: string): Promise<string | undefined> {
 }
 
 /** Try to get the description of a service unit */
-async function getServiceDescription(service: string): Promise<string | undefined> {
+async function getServiceDescription(
+  service: string,
+): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync(
-      "systemctl", ["show", service, "--property=Description", "--no-pager"],
+      "systemctl",
+      ["show", service, "--property=Description", "--no-pager"],
       { timeout: 5_000 },
     );
     const match = stdout.match(/Description=(.+)/);
@@ -118,9 +124,13 @@ export class SystemdScanner implements Scanner {
     const tasks: ScheduledTask[] = [];
 
     try {
-      const { stdout } = await execFileAsync("systemctl", ["list-timers", "--all", "--no-pager"], {
-        timeout: 10_000,
-      });
+      const { stdout } = await execFileAsync(
+        "systemctl",
+        ["list-timers", "--all", "--no-pager"],
+        {
+          timeout: 10_000,
+        },
+      );
       const timers = parseTimerOutput(stdout);
 
       for (const timer of timers) {

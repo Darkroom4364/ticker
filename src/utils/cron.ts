@@ -28,17 +28,36 @@ const NAMED_SHORTCUTS: Record<string, string> = {
 };
 
 const FIELD_RANGES: { min: number; max: number }[] = [
-  { min: 0, max: 59 },  // minute
-  { min: 0, max: 23 },  // hour
-  { min: 1, max: 31 },  // day of month
-  { min: 1, max: 12 },  // month
-  { min: 0, max: 7 },   // day of week (0 and 7 = Sunday)
+  { min: 0, max: 59 }, // minute
+  { min: 0, max: 23 }, // hour
+  { min: 1, max: 31 }, // day of month
+  { min: 1, max: 12 }, // month
+  { min: 0, max: 7 }, // day of week (0 and 7 = Sunday)
 ];
 
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 const MONTH_NAMES = [
-  "", "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 function parseField(field: string, min: number, max: number): CronField {
@@ -65,7 +84,13 @@ function parseField(field: string, min: number, max: number): CronField {
       const [startStr, endStr] = segments;
       const start = parseInt(startStr, 10);
       const end = parseInt(endStr, 10);
-      if (isNaN(start) || isNaN(end) || start < min || end > max || start > end) {
+      if (
+        isNaN(start) ||
+        isNaN(end) ||
+        start < min ||
+        end > max ||
+        start > end
+      ) {
         throw new Error(`Invalid range: ${range} (must be ${min}-${max})`);
       }
       for (let i = start; i <= end; i += step) {
@@ -92,7 +117,7 @@ function parseCronFields(expr: string): ParsedCron {
 
   if (fields.length !== 5) {
     throw new Error(
-      `Invalid cron expression: expected 5 fields, got ${fields.length} in "${expr}"`
+      `Invalid cron expression: expected 5 fields, got ${fields.length} in "${expr}"`,
     );
   }
 
@@ -163,9 +188,10 @@ function computeNextRun(parsed: ParsedCron, now: Date): Date {
     const domMatch = validDoms.includes(dom);
     const dowMatch = parsed.dayOfWeek.values.includes(dow);
 
-    const dayMatch = domRestricted && dowRestricted
-      ? domMatch || dowMatch
-      : domMatch && dowMatch;
+    const dayMatch =
+      domRestricted && dowRestricted
+        ? domMatch || dowMatch
+        : domMatch && dowMatch;
 
     if (!dayMatch) {
       candidate.setDate(candidate.getDate() + 1);
@@ -270,31 +296,63 @@ export function describeCronExpression(expr: string): string {
   }
 
   // Specific time every day
-  if (allDoms && allMonths && allDows && parsed.hour.values.length === 1 && parsed.minute.values.length === 1) {
+  if (
+    allDoms &&
+    allMonths &&
+    allDows &&
+    parsed.hour.values.length === 1 &&
+    parsed.minute.values.length === 1
+  ) {
     return `Every day at ${formatTime(parsed.hour.values[0], parsed.minute.values[0])}`;
   }
 
   // Specific time on specific day of week
-  if (allDoms && allMonths && parsed.dayOfWeek.values.length === 1 && parsed.hour.values.length === 1 && parsed.minute.values.length === 1) {
+  if (
+    allDoms &&
+    allMonths &&
+    parsed.dayOfWeek.values.length === 1 &&
+    parsed.hour.values.length === 1 &&
+    parsed.minute.values.length === 1
+  ) {
     const day = DAY_NAMES[parsed.dayOfWeek.values[0]];
     return `Every ${day} at ${formatTime(parsed.hour.values[0], parsed.minute.values[0])}`;
   }
 
   // Specific time on specific days of week
-  if (allDoms && allMonths && !allDows && parsed.hour.values.length === 1 && parsed.minute.values.length === 1) {
-    const days = sortDowForDisplay(parsed.dayOfWeek.values).map((d) => DAY_NAMES[d]).join(", ");
+  if (
+    allDoms &&
+    allMonths &&
+    !allDows &&
+    parsed.hour.values.length === 1 &&
+    parsed.minute.values.length === 1
+  ) {
+    const days = sortDowForDisplay(parsed.dayOfWeek.values)
+      .map((d) => DAY_NAMES[d])
+      .join(", ");
     return `Every ${days} at ${formatTime(parsed.hour.values[0], parsed.minute.values[0])}`;
   }
 
   // Specific time on specific day of month
-  if (allMonths && allDows && parsed.dayOfMonth.values.length === 1 && parsed.hour.values.length === 1 && parsed.minute.values.length === 1) {
+  if (
+    allMonths &&
+    allDows &&
+    parsed.dayOfMonth.values.length === 1 &&
+    parsed.hour.values.length === 1 &&
+    parsed.minute.values.length === 1
+  ) {
     const dom = parsed.dayOfMonth.values[0];
     const suffix = getOrdinalSuffix(dom);
     return `Every month on the ${dom}${suffix} at ${formatTime(parsed.hour.values[0], parsed.minute.values[0])}`;
   }
 
   // Specific time on specific month and day
-  if (allDows && parsed.month.values.length === 1 && parsed.dayOfMonth.values.length === 1 && parsed.hour.values.length === 1 && parsed.minute.values.length === 1) {
+  if (
+    allDows &&
+    parsed.month.values.length === 1 &&
+    parsed.dayOfMonth.values.length === 1 &&
+    parsed.hour.values.length === 1 &&
+    parsed.minute.values.length === 1
+  ) {
     const monthName = MONTH_NAMES[parsed.month.values[0]];
     const dom = parsed.dayOfMonth.values[0];
     const suffix = getOrdinalSuffix(dom);
@@ -353,7 +411,9 @@ function buildGenericDescription(parsed: ParsedCron): string {
   }
 
   if (parsed.dayOfWeek.values.length < 7) {
-    const days = sortDowForDisplay(parsed.dayOfWeek.values).map((d) => DAY_NAMES[d]);
+    const days = sortDowForDisplay(parsed.dayOfWeek.values).map(
+      (d) => DAY_NAMES[d],
+    );
     parts.push(`on ${days.join(", ")}`);
   }
 
@@ -384,7 +444,7 @@ export function getNextCronRun(expr: string, now?: Date): Date {
  */
 export function parseCronExpression(
   expr: string,
-  now?: Date
+  now?: Date,
 ): { nextRun: Date | undefined; interval: string } {
   const interval = describeCronExpression(expr);
 

@@ -11,8 +11,7 @@ const COLUMNS: Column[] = [
   { header: "Schedule", getValue: (t) => t.schedule },
   {
     header: "Next Run",
-    getValue: (t) =>
-      t.nextRun ? t.nextRun.toISOString() : "N/A",
+    getValue: (t) => (t.nextRun ? t.nextRun.toISOString() : "N/A"),
   },
   { header: "Command", getValue: (t) => t.command ?? "" },
 ];
@@ -29,19 +28,19 @@ export function formatTable(tasks: ScheduledTask[]): string {
   const widths = COLUMNS.map((col) =>
     Math.max(
       col.header.length,
-      ...tasks.map((task) => col.getValue(task).length)
-    )
+      ...tasks.map((task) => col.getValue(task).length),
+    ),
   );
 
   const separator = widths.map((w) => "─".repeat(w + 2)).join("┼");
   const headerLine = COLUMNS.map(
-    (col, i) => ` ${col.header.padEnd(widths[i])} `
+    (col, i) => ` ${col.header.padEnd(widths[i])} `,
   ).join("│");
 
   const rows = tasks.map((task) =>
-    COLUMNS.map(
-      (col, i) => ` ${col.getValue(task).padEnd(widths[i])} `
-    ).join("│")
+    COLUMNS.map((col, i) => ` ${col.getValue(task).padEnd(widths[i])} `).join(
+      "│",
+    ),
   );
 
   return [headerLine, separator, ...rows].join("\n");
