@@ -162,4 +162,63 @@ describe("schedex CLI", () => {
       expect(err.stdout ?? "").toMatch(/\[.+\].*\d+ms/);
     }
   });
+
+  it("check outputs healthy in isolated env", () => {
+    const { stdout, exitCode } = run("check");
+    expect(stdout.toLowerCase()).toContain("healthy");
+    expect(exitCode).toBe(0);
+  });
+
+  it("check --help documents --scanners and --verbose", () => {
+    const { stdout } = run("check", "--help");
+    expect(stdout).toContain("--scanners");
+    expect(stdout).toContain("--verbose");
+  });
+
+  it("export produces Prometheus metrics", () => {
+    const { stdout, exitCode } = run("export");
+    expect(stdout).toContain("schedex_jobs_total");
+    expect(stdout).toContain("# HELP");
+    expect(stdout).toContain("# TYPE");
+    expect(exitCode).toBe(0);
+  });
+
+  it("export --help documents --scanners and --verbose", () => {
+    const { stdout } = run("export", "--help");
+    expect(stdout).toContain("--scanners");
+    expect(stdout).toContain("--verbose");
+  });
+
+  it("completions bash produces bash completions", () => {
+    const { stdout, exitCode } = run("completions", "bash");
+    expect(stdout).toContain("_schedex");
+    expect(stdout).toContain("compgen");
+    expect(exitCode).toBe(0);
+  });
+
+  it("completions zsh produces zsh completions", () => {
+    const { stdout, exitCode } = run("completions", "zsh");
+    expect(stdout).toContain("#compdef schedex");
+    expect(exitCode).toBe(0);
+  });
+
+  it("completions fish produces fish completions", () => {
+    const { stdout, exitCode } = run("completions", "fish");
+    expect(stdout).toContain("complete -c schedex");
+    expect(exitCode).toBe(0);
+  });
+
+  it("completions powershell exits with error", () => {
+    const { exitCode, stderr } = run("completions", "powershell");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Invalid shell");
+  });
+
+  it("watch --help documents --interval, --format, --scanners, --verbose", () => {
+    const { stdout } = run("watch", "--help");
+    expect(stdout).toContain("--interval");
+    expect(stdout).toContain("--format");
+    expect(stdout).toContain("--scanners");
+    expect(stdout).toContain("--verbose");
+  });
 });
