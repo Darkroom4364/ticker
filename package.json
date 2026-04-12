@@ -1,6 +1,6 @@
 {
   "name": "schedex",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "CLI that discovers every scheduled job across infrastructure",
   "type": "module",
   "main": "./dist/index.js",
@@ -49,9 +49,16 @@
   },
   "keywords": [
     "cron",
+    "crontab",
     "scheduler",
     "infrastructure",
-    "cli"
+    "cli",
+    "devops",
+    "kubernetes",
+    "systemd",
+    "eventbridge",
+    "scheduled-jobs",
+    "monitoring"
   ],
   "license": "Apache-2.0",
   "engines": {
