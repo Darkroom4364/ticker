@@ -50,7 +50,7 @@ function run(
 describe("schedex CLI", () => {
   it("prints version with --version", () => {
     const { stdout } = run("--version");
-    expect(stdout.trim()).toBe("0.1.0");
+    expect(stdout.trim()).toBe("1.0.0");
   });
 
   it("prints help with --help", () => {
