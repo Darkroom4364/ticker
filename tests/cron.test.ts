@@ -366,3 +366,409 @@ describe("edge cases", () => {
     expect(result.nextRun.getHours()).toBe(12);
   });
 });
+
+describe("whitespace variations", () => {
+  it("handles leading and trailing whitespace", () => {
+    expect(describeCronExpression("  0 2 * * *  ")).toBe("Every day at 2 AM");
+  });
+
+  it("handles multiple spaces between fields", () => {
+    expect(describeCronExpression("0  2  *  *  *")).toBe("Every day at 2 AM");
+  });
+
+  it("handles tabs between fields", () => {
+    expect(describeCronExpression("0\t2\t*\t*\t*")).toBe("Every day at 2 AM");
+  });
+
+  it("handles mixed tabs and spaces", () => {
+    expect(describeCronExpression("0 \t 2 \t * \t * \t *")).toBe(
+      "Every day at 2 AM"
+    );
+  });
+
+  it("rejects empty string", () => {
+    expect(() => parseCronExpression("")).toThrow();
+  });
+
+  it("rejects string of only spaces", () => {
+    expect(() => parseCronExpression("   ")).toThrow();
+  });
+});
+
+describe("maximum field expansions", () => {
+  it("parses full minute range 0-59", () => {
+    const result = parseCronExpression("0-59 0 1 1 *", NOW);
+    expect(result.interval).toContain("minute");
+  });
+
+  it("parses full hour range 0-23", () => {
+    const result = parseCronExpression("0 0-23 1 1 *", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+  });
+
+  it("parses full day-of-month range 1-31", () => {
+    const result = parseCronExpression("0 0 1-31 1 *", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+  });
+
+  it("parses full month range 1-12", () => {
+    const result = parseCronExpression("0 0 1 1-12 *", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+  });
+
+  it("parses full day-of-week range 0-6", () => {
+    const result = parseCronExpression("0 0 * * 0-6", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+  });
+});
+
+describe("overlapping ranges and duplicates", () => {
+  it("handles overlapping ranges in a field: 1-5,3-7", () => {
+    // Should deduplicate and produce 1,2,3,4,5,6,7
+    const result = parseCronExpression("0 1-5,3-7 * * *", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+    // The hour should be in the merged range
+    expect(result.nextRun.getHours()).toBeGreaterThanOrEqual(1);
+    expect(result.nextRun.getHours()).toBeLessThanOrEqual(7);
+  });
+
+  it("handles duplicate values: 1,1,1,1", () => {
+    const result = parseCronExpression("0 1,1,1,1 * * *", NOW);
+    expect(result.nextRun.getHours()).toBe(1);
+  });
+
+  it("handles overlapping ranges in minutes: 0-30,15-45", () => {
+    const result = parseCronExpression("0-30,15-45 12 * * *", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+  });
+});
+
+describe("step edge cases", () => {
+  it("step on single value: 5/2 in minutes", () => {
+    // parseField treats '5' as a single value, step=2, but since it's not a range or *,
+    // '5' is parsed as a literal numeric value — this depends on implementation
+    // The regex matches 5/2: range='5', step=2, but '5' is a single number not containing '-'
+    // and not '*', so it adds just the value 5.
+    const result = parseCronExpression("5/2 * * * *", NOW);
+    expect(result.nextRun).toBeInstanceOf(Date);
+  });
+
+  it("step larger than range: */100 in minutes", () => {
+    // Only minute 0 will match (0 is first, 0+100>59 so no more)
+    const result = parseCronExpression("*/100 * * * *", NOW);
+    expect(result.nextRun.getMinutes()).toBe(0);
+  });
+
+  it("step larger than range: */25 in hours", () => {
+    // Only hour 0 matches (0+25>23)
+    const result = parseCronExpression("0 */25 * * *", NOW);
+    expect(result.nextRun.getHours()).toBe(0);
+  });
+
+  it("step of 1 is same as no step", () => {
+    const a = describeCronExpression("*/1 * * * *");
+    const b = describeCronExpression("* * * * *");
+    expect(a).toBe(b);
+  });
+});
+
+describe("boundary values", () => {
+  it("minute=59", () => {
+    const result = parseCronExpression("59 * * * *", NOW);
+    expect(result.nextRun.getMinutes()).toBe(59);
+  });
+
+  it("hour=23", () => {
+    const result = parseCronExpression("0 23 * * *", NOW);
+    expect(result.nextRun.getHours()).toBe(23);
+  });
+
+  it("day-of-month=31", () => {
+    const result = parseCronExpression("0 0 31 * *", NOW);
+    expect(result.nextRun.getDate()).toBe(31);
+  });
+
+  it("month=12", () => {
+    const result = parseCronExpression("0 0 1 12 *", NOW);
+    expect(result.nextRun.getMonth()).toBe(11); // December, 0-based
+  });
+
+  it("day-of-week=6 (Saturday)", () => {
+    const result = parseCronExpression("0 0 * * 6", NOW);
+    expect(result.nextRun.getDay()).toBe(6);
+  });
+});
+
+describe("all wildcards vs all specific", () => {
+  it("all wildcards: * * * * * fires next minute", () => {
+    const next = getNextCronRun("* * * * *", NOW);
+    expect(next.getTime() - NOW.getTime()).toBeLessThanOrEqual(60000);
+    expect(next.getMinutes()).toBe(31);
+  });
+
+  it("all specific: 30 14 15 6 3 fires on exact match", () => {
+    // June 15 2025 is a Sunday (day 0), not Wednesday (3).
+    // Both dom=15 and dow=3 are restricted, so OR logic applies.
+    // June 15 matches dom=15, so it should fire at 14:30 today.
+    const next = getNextCronRun("30 14 15 6 3", NOW);
+    expect(next.getMonth()).toBe(5); // June
+    expect(next.getHours()).toBe(14);
+    expect(next.getMinutes()).toBe(30);
+  });
+});
+
+describe("invalid field counts", () => {
+  it("rejects 6 fields", () => {
+    expect(() => parseCronExpression("0 0 1 1 * *")).toThrow(
+      /expected 5 fields/i
+    );
+  });
+
+  it("rejects 4 fields", () => {
+    expect(() => parseCronExpression("0 0 1 *")).toThrow(
+      /expected 5 fields/i
+    );
+  });
+
+  it("rejects 1 field", () => {
+    expect(() => parseCronExpression("0")).toThrow(/expected 5 fields/i);
+  });
+
+  it("rejects 2 fields", () => {
+    expect(() => parseCronExpression("0 0")).toThrow(/expected 5 fields/i);
+  });
+});
+
+describe("extremely large and out-of-range values", () => {
+  it("rejects minute=999", () => {
+    expect(() => parseCronExpression("999 * * * *")).toThrow();
+  });
+
+  it("rejects hour=99", () => {
+    expect(() => parseCronExpression("0 99 * * *")).toThrow();
+  });
+
+  it("rejects day-of-month=32", () => {
+    expect(() => parseCronExpression("0 0 32 * *")).toThrow();
+  });
+
+  it("rejects month=13", () => {
+    expect(() => parseCronExpression("0 0 1 13 *")).toThrow();
+  });
+
+  it("rejects day-of-week=8", () => {
+    expect(() => parseCronExpression("0 0 * * 8")).toThrow();
+  });
+
+  it("rejects day-of-month=0", () => {
+    expect(() => parseCronExpression("0 0 0 * *")).toThrow();
+  });
+
+  it("rejects month=0", () => {
+    expect(() => parseCronExpression("0 0 1 0 *")).toThrow();
+  });
+});
+
+describe("negative numbers in various fields", () => {
+  it("rejects negative minute", () => {
+    expect(() => parseCronExpression("-5 * * * *")).toThrow();
+  });
+
+  it("rejects negative hour", () => {
+    expect(() => parseCronExpression("0 -1 * * *")).toThrow();
+  });
+
+  it("rejects negative day-of-month", () => {
+    expect(() => parseCronExpression("0 0 -1 * *")).toThrow();
+  });
+
+  it("rejects negative in range start", () => {
+    expect(() => parseCronExpression("-1-5 * * * *")).toThrow();
+  });
+});
+
+describe("unicode and special characters", () => {
+  it("rejects unicode characters in expression", () => {
+    expect(() => parseCronExpression("0 0 * * \u{1F600}")).toThrow();
+  });
+
+  it("rejects emoji in field", () => {
+    expect(() => parseCronExpression("\u{1F4A9} * * * *")).toThrow();
+  });
+
+  it("rejects special characters like @unknown", () => {
+    expect(() => parseCronExpression("@unknown")).toThrow();
+  });
+
+  it("rejects expression with semicolons", () => {
+    expect(() => parseCronExpression("0;0 * * * *")).toThrow();
+  });
+});
+
+describe("null and undefined input handling", () => {
+  it("throws on null input to parseCronExpression", () => {
+    expect(() =>
+      parseCronExpression(null as unknown as string)
+    ).toThrow();
+  });
+
+  it("throws on undefined input to parseCronExpression", () => {
+    expect(() =>
+      parseCronExpression(undefined as unknown as string)
+    ).toThrow();
+  });
+
+  it("throws on null input to describeCronExpression", () => {
+    expect(() =>
+      describeCronExpression(null as unknown as string)
+    ).toThrow();
+  });
+
+  it("throws on undefined input to getNextCronRun", () => {
+    expect(() =>
+      getNextCronRun(undefined as unknown as string)
+    ).toThrow();
+  });
+});
+
+describe("nextRun near midnight boundaries", () => {
+  it("rolls from 23:59 to 00:00 next day", () => {
+    const nearMidnight = new Date(2025, 5, 15, 23, 59, 0);
+    const next = getNextCronRun("0 0 * * *", nearMidnight);
+    expect(next.getDate()).toBe(16);
+    expect(next.getHours()).toBe(0);
+    expect(next.getMinutes()).toBe(0);
+  });
+
+  it("fires at 23:59 when scheduled", () => {
+    const before = new Date(2025, 5, 15, 23, 58, 0);
+    const next = getNextCronRun("59 23 * * *", before);
+    expect(next.getDate()).toBe(15);
+    expect(next.getHours()).toBe(23);
+    expect(next.getMinutes()).toBe(59);
+  });
+
+  it("every minute at 23:59 rolls to next day 00:00", () => {
+    const at2359 = new Date(2025, 5, 15, 23, 59, 0);
+    const next = getNextCronRun("* * * * *", at2359);
+    expect(next.getDate()).toBe(16);
+    expect(next.getHours()).toBe(0);
+    expect(next.getMinutes()).toBe(0);
+  });
+});
+
+describe("nextRun near month boundaries", () => {
+  it("rolls from Jan 31 to Feb 1 for daily cron", () => {
+    const jan31 = new Date(2025, 0, 31, 23, 59, 0);
+    const next = getNextCronRun("0 0 * * *", jan31);
+    expect(next.getMonth()).toBe(1); // February
+    expect(next.getDate()).toBe(1);
+  });
+
+  it("rolls from Apr 30 to May 1", () => {
+    const apr30 = new Date(2025, 3, 30, 23, 59, 0);
+    const next = getNextCronRun("0 0 * * *", apr30);
+    expect(next.getMonth()).toBe(4); // May
+    expect(next.getDate()).toBe(1);
+  });
+
+  it("handles day 31 skipping months without 31 days", () => {
+    // Feb, Apr, Jun, Sep, Nov don't have 31 days
+    const jan31 = new Date(2025, 0, 31, 0, 0, 0);
+    const next = getNextCronRun("0 0 31 * *", jan31);
+    // Next month with day 31 after Jan is March
+    expect(next.getMonth()).toBe(2); // March
+    expect(next.getDate()).toBe(31);
+  });
+});
+
+describe("nextRun near year boundaries", () => {
+  it("rolls from Dec 31 to Jan 1 next year", () => {
+    const dec31 = new Date(2025, 11, 31, 23, 59, 0);
+    const next = getNextCronRun("0 0 * * *", dec31);
+    expect(next.getFullYear()).toBe(2026);
+    expect(next.getMonth()).toBe(0); // January
+    expect(next.getDate()).toBe(1);
+  });
+
+  it("yearly cron at Dec 31 rolls to next year", () => {
+    const dec31 = new Date(2025, 11, 31, 12, 0, 0);
+    const next = getNextCronRun("0 0 1 1 *", dec31);
+    expect(next.getFullYear()).toBe(2026);
+    expect(next.getMonth()).toBe(0);
+    expect(next.getDate()).toBe(1);
+  });
+});
+
+describe("leap year Feb 29 cron", () => {
+  it("fires once a year only on leap years: 0 0 29 2 *", () => {
+    const jan2025 = new Date(2025, 0, 1, 0, 0, 0);
+    const next = getNextCronRun("0 0 29 2 *", jan2025);
+    // 2025 is not a leap year, 2026 no, 2027 no, 2028 yes
+    expect(next.getFullYear()).toBe(2028);
+    expect(next.getMonth()).toBe(1);
+    expect(next.getDate()).toBe(29);
+  });
+
+  it("fires in current leap year if not yet past", () => {
+    const feb1_2028 = new Date(2028, 1, 1, 0, 0, 0);
+    const next = getNextCronRun("0 0 29 2 *", feb1_2028);
+    expect(next.getFullYear()).toBe(2028);
+    expect(next.getMonth()).toBe(1);
+    expect(next.getDate()).toBe(29);
+  });
+});
+
+describe("getDescription for complex expressions", () => {
+  it("describes complex multi-field expression", () => {
+    const desc = describeCronExpression("5,10,15 2,14 1,15 6,12 *");
+    expect(desc).toContain("minute");
+    expect(desc).toContain("5");
+    expect(desc).toContain("10");
+    expect(desc).toContain("15");
+  });
+
+  it("describes expression with restricted months", () => {
+    const desc = describeCronExpression("0 0 * 1,6 *");
+    expect(desc).toContain("January");
+    expect(desc).toContain("June");
+  });
+
+  it("describes expression with all fields restricted", () => {
+    const desc = describeCronExpression("30 14 15 6 3");
+    expect(desc).toContain("minute");
+    expect(desc).toContain("Wednesday");
+  });
+
+  it("describes expression with step in day-of-week", () => {
+    const desc = describeCronExpression("0 0 * * 1-5");
+    expect(desc).toContain("Monday");
+    expect(desc).toContain("Friday");
+  });
+});
+
+describe("named shortcut edge cases", () => {
+  it("@midnight is identical to @daily", () => {
+    expect(describeCronExpression("@midnight")).toBe(
+      describeCronExpression("@daily")
+    );
+  });
+
+  it("@annually is identical to @yearly", () => {
+    expect(describeCronExpression("@annually")).toBe(
+      describeCronExpression("@yearly")
+    );
+  });
+
+  it("@daily nextRun matches 0 0 * * * nextRun", () => {
+    const a = getNextCronRun("@daily", NOW);
+    const b = getNextCronRun("0 0 * * *", NOW);
+    expect(a.getTime()).toBe(b.getTime());
+  });
+
+  it("@weekly nextRun matches 0 0 * * 0 nextRun", () => {
+    const a = getNextCronRun("@weekly", NOW);
+    const b = getNextCronRun("0 0 * * 0", NOW);
+    expect(a.getTime()).toBe(b.getTime());
+  });
+});

@@ -325,5 +325,329 @@ describe("KubernetesScanner", () => {
       expect(tasks[0].name).toBe("production/good-job");
       expect(tasks[1].name).toBe("staging/another-good-job");
     });
+
+    it("skips CronJob with null containers field without crashing the scan", async () => {
+      const listWithNullContainers = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "healthy-job", namespace: "prod", annotations: {} },
+            spec: {
+              schedule: "0 3 * * *",
+              suspend: false,
+              jobTemplate: {
+                spec: { template: { spec: { containers: [{ name: "app", image: "myregistry/app:v1" }] } } },
+              },
+            },
+            status: {},
+          },
+          {
+            metadata: { name: "null-containers-job", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "0 4 * * *",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: null } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({
+        "kubectl get cronjobs": listWithNullContainers,
+        "which": "/usr/local/bin/kubectl",
+      });
+
+      const tasks = await scanner.scan(defaultOptions);
+
+      // Bug: accessing .length on null containers crashes the scan.
+      // The scanner should skip the malformed CronJob and still return the valid one.
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("prod/healthy-job");
+      expect(tasks[0].command).toBe("myregistry/app:v1");
+    });
+
+    it("handles CronJob with empty containers array", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "empty-containers", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "0 5 * * *",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: [] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("default/empty-containers");
+      expect(tasks[0].command).toBeUndefined();
+      expect(tasks[0].metadata?.image).toBeUndefined();
+    });
+
+    it("skips CronJob with missing spec entirely", async () => {
+      const list = JSON.stringify({
+        items: [
+          { metadata: { name: "no-spec", namespace: "default" } },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("handles CronJob with empty string schedule", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "empty-sched", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("");
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[0].interval).toBeUndefined();
+    });
+
+    it("handles CronJob with invalid cron schedule", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "bad-cron", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "not a cron",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].schedule).toBe("not a cron");
+      expect(tasks[0].nextRun).toBeUndefined();
+      expect(tasks[0].interval).toBeUndefined();
+    });
+
+    it("handles CronJob with extremely long name", async () => {
+      const longName = "a".repeat(500);
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: longName, namespace: "default", annotations: {} },
+            spec: {
+              schedule: "0 0 * * *",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe(`default/${longName}`);
+    });
+
+    it("handles CronJob with unicode name", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "\u5b9a\u671f\u30bf\u30b9\u30af-\ud83d\ude80", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "0 0 * * *",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toContain("\u5b9a\u671f\u30bf\u30b9\u30af");
+    });
+
+    it("marks suspend: true in metadata", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "suspended-job", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "0 0 * * *",
+              suspend: true,
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].metadata?.suspended).toBe("true");
+    });
+
+    it("skips CronJob with missing metadata", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            spec: {
+              schedule: "0 0 * * *",
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("skips CronJob with missing metadata.name", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { namespace: "default" },
+            spec: {
+              schedule: "0 0 * * *",
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      // name would be "default/undefined" — scanner doesn't validate, it just constructs
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].name).toBe("default/undefined");
+    });
+
+    it("returns empty array for items as empty array", async () => {
+      mockExecByCommand({ "kubectl get cronjobs": JSON.stringify({ items: [] }) });
+      const tasks = await scanner.scan(defaultOptions);
+      expect(tasks).toHaveLength(0);
+    });
+
+    it("throws on empty JSON object (no items property)", async () => {
+      mockExecByCommand({ "kubectl get cronjobs": "{}" });
+      await expect(scanner.scan(defaultOptions)).rejects.toThrow();
+    });
+
+    it("throws on invalid JSON from kubectl", async () => {
+      mockExecByCommand({ "kubectl get cronjobs": "not json at all {{{" });
+      await expect(scanner.scan(defaultOptions)).rejects.toThrow();
+    });
+
+    it("handles huge response with 100+ items", async () => {
+      const items = Array.from({ length: 150 }, (_, i) => ({
+        metadata: { name: `job-${i}`, namespace: "default", annotations: {} },
+        spec: {
+          schedule: `${i % 60} * * * *`,
+          suspend: false,
+          jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: `img:${i}` }] } } } },
+        },
+        status: {},
+      }));
+
+      mockExecByCommand({ "kubectl get cronjobs": JSON.stringify({ items }) });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(150);
+      expect(tasks[0].name).toBe("default/job-0");
+      expect(tasks[149].name).toBe("default/job-149");
+    });
+
+    it("uses first container image when multiple containers exist", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "multi-container", namespace: "default", annotations: {} },
+            spec: {
+              schedule: "0 0 * * *",
+              suspend: false,
+              jobTemplate: {
+                spec: {
+                  template: {
+                    spec: {
+                      containers: [
+                        { name: "main", image: "main-image:v1" },
+                        { name: "sidecar", image: "sidecar-image:v2" },
+                        { name: "init", image: "init-image:v3" },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].command).toBe("main-image:v1");
+      expect(tasks[0].metadata?.image).toBe("main-image:v1");
+    });
+
+    it("includes namespace in metadata", async () => {
+      const list = JSON.stringify({
+        items: [
+          {
+            metadata: { name: "job", namespace: "kube-system", annotations: {} },
+            spec: {
+              schedule: "0 0 * * *",
+              suspend: false,
+              jobTemplate: { spec: { template: { spec: { containers: [{ name: "c", image: "img:1" }] } } } },
+            },
+            status: {},
+          },
+        ],
+      });
+
+      mockExecByCommand({ "kubectl get cronjobs": list });
+      const tasks = await scanner.scan(defaultOptions);
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].metadata?.namespace).toBe("kube-system");
+      expect(tasks[0].name).toBe("kube-system/job");
+    });
   });
 });

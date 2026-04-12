@@ -38,6 +38,26 @@ describe("checkHealth", () => {
       expect(w!.tasks[0].name).toBe("poller");
     });
 
+    describe("equivalent every-minute expressions", () => {
+      it("detects */1 step syntax as every-minute", () => {
+        const report = checkHealth([
+          makeTask({ name: "stepper", schedule: "*/1 * * * *", source: "crontab" }),
+        ]);
+        const w = report.warnings.find((w) => w.code === "TOO_FREQUENT");
+        expect(w).toBeDefined();
+        expect(w!.tasks[0].name).toBe("stepper");
+      });
+
+      it("detects 0-59 full range as every-minute", () => {
+        const report = checkHealth([
+          makeTask({ name: "ranger", schedule: "0-59 * * * *", source: "crontab" }),
+        ]);
+        const w = report.warnings.find((w) => w.code === "TOO_FREQUENT");
+        expect(w).toBeDefined();
+        expect(w!.tasks[0].name).toBe("ranger");
+      });
+    });
+
     it("does not flag less-frequent expressions", () => {
       const report = checkHealth([
         makeTask({ name: "hourly", schedule: "0 * * * *", source: "crontab" }),
@@ -188,6 +208,255 @@ describe("checkHealth", () => {
       ]);
       const w = report.warnings.filter((w) => w.code === "STALE_EXPRESSION");
       expect(w).toHaveLength(0);
+    });
+  });
+
+  describe("edge cases: empty/weird fields", () => {
+    it("handles task with empty string name, source, and schedule", () => {
+      const report = checkHealth([
+        makeTask({ name: "", schedule: "", source: "" }),
+      ]);
+      // empty schedule is not 5 fields, so no TOO_FREQUENT
+      // nextRun is set by default, so no NO_NEXT_RUN
+      expect(report.totalTasks).toBe(1);
+    });
+
+    it("handles task with whitespace-only name", () => {
+      const report = checkHealth([
+        makeTask({ name: "   ", schedule: "0 3 * * *", source: "crontab" }),
+      ]);
+      expect(report.totalTasks).toBe(1);
+      expect(report.healthyTasks).toBe(1);
+    });
+
+    it("handles task with extremely long name (1000+ chars)", () => {
+      const longName = "a".repeat(1500);
+      const report = checkHealth([
+        makeTask({ name: longName, schedule: "0 3 * * *", source: "crontab" }),
+      ]);
+      expect(report.totalTasks).toBe(1);
+      expect(report.healthyTasks).toBe(1);
+      // the name should appear in messages if warnings are triggered
+    });
+
+    it("handles task with unicode/emoji in name and source", () => {
+      const report = checkHealth([
+        makeTask({ name: "🚀 deploy ñoño", schedule: "0 3 * * *", source: "kübernetes 🐳" }),
+      ]);
+      expect(report.totalTasks).toBe(1);
+      expect(report.healthyTasks).toBe(1);
+    });
+
+    it("throws when schedule is undefined (null/undefined fields)", () => {
+      expect(() =>
+        checkHealth([
+          makeTask({
+            name: null as unknown as string,
+            schedule: undefined as unknown as string,
+            source: "crontab",
+          }),
+        ]),
+      ).toThrow();
+    });
+
+    it("handles task with invalid cron (random string) schedule", () => {
+      const report = checkHealth([
+        makeTask({ name: "bad-cron", schedule: "not a cron at all", source: "crontab" }),
+      ]);
+      // not 5 fields, so TOO_FREQUENT won't trigger; no crash expected
+      expect(report.totalTasks).toBe(1);
+    });
+
+    it("handles task with interval field set alongside cron schedule", () => {
+      const report = checkHealth([
+        makeTask({
+          name: "interval-job",
+          schedule: "0 3 * * *",
+          source: "systemd",
+          interval: "Every day at 3:00 AM",
+        }),
+      ]);
+      expect(report.totalTasks).toBe(1);
+      expect(report.healthyTasks).toBe(1);
+    });
+  });
+
+  describe("edge cases: nextRun boundaries", () => {
+    it("handles nextRun in the far past (year 1970, epoch)", () => {
+      const report = checkHealth([
+        makeTask({ name: "epoch-job", schedule: "0 0 * * *", source: "crontab", nextRun: new Date(0) }),
+      ]);
+      // Date(0) is in the past, so nextRun - now < 0, STALE_EXPRESSION should NOT fire
+      const stale = report.warnings.filter((w) => w.code === "STALE_EXPRESSION");
+      expect(stale).toHaveLength(0);
+      expect(report.totalTasks).toBe(1);
+    });
+
+    it("handles nextRun in the far future (year 9999)", () => {
+      const report = checkHealth([
+        makeTask({ name: "far-future", schedule: "0 0 1 1 *", source: "crontab", nextRun: new Date("9999-12-31T23:59:59Z") }),
+      ]);
+      const stale = report.warnings.find((w) => w.code === "STALE_EXPRESSION");
+      expect(stale).toBeDefined();
+      expect(stale!.message).toContain("more than a year away");
+    });
+
+    it("does not flag nextRun exactly 365 days away as stale", () => {
+      const nextRun = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      const report = checkHealth([
+        makeTask({ name: "yearly", schedule: "0 0 1 1 *", source: "crontab", nextRun }),
+      ]);
+      const stale = report.warnings.filter((w) => w.code === "STALE_EXPRESSION");
+      expect(stale).toHaveLength(0);
+    });
+
+    it("does not flag nextRun exactly 366 days away as stale", () => {
+      const nextRun = new Date(Date.now() + 366 * 24 * 60 * 60 * 1000);
+      const report = checkHealth([
+        makeTask({ name: "leap-yearly", schedule: "0 0 29 2 *", source: "crontab", nextRun }),
+      ]);
+      const stale = report.warnings.filter((w) => w.code === "STALE_EXPRESSION");
+      expect(stale).toHaveLength(0);
+    });
+
+    it("flags nextRun at 367 days away as stale", () => {
+      const nextRun = new Date(Date.now() + 367 * 24 * 60 * 60 * 1000);
+      const report = checkHealth([
+        makeTask({ name: "stale-yearly", schedule: "0 0 29 2 *", source: "crontab", nextRun }),
+      ]);
+      const stale = report.warnings.find((w) => w.code === "STALE_EXPRESSION");
+      expect(stale).toBeDefined();
+    });
+  });
+
+  describe("edge cases: names differing by whitespace or case", () => {
+    it("does not treat names differing only by case as overlapping", () => {
+      const report = checkHealth([
+        makeTask({ name: "Backup", schedule: "0 3 * * *", source: "crontab" }),
+        makeTask({ name: "backup", schedule: "0 4 * * *", source: "kubernetes" }),
+      ]);
+      // name matching is case-sensitive, so these are different names
+      const overlap = report.warnings.filter((w) => w.code === "OVERLAPPING_NAMES");
+      expect(overlap).toHaveLength(0);
+    });
+
+    it("does not treat names differing only by whitespace as overlapping", () => {
+      const report = checkHealth([
+        makeTask({ name: "backup ", schedule: "0 3 * * *", source: "crontab" }),
+        makeTask({ name: "backup", schedule: "0 4 * * *", source: "kubernetes" }),
+      ]);
+      const overlap = report.warnings.filter((w) => w.code === "OVERLAPPING_NAMES");
+      expect(overlap).toHaveLength(0);
+    });
+  });
+
+  describe("edge cases: duplicate detection at scale", () => {
+    it("handles hundreds of tasks with same schedule from same source", () => {
+      const tasks = Array.from({ length: 200 }, (_, i) =>
+        makeTask({ name: `job-${i}`, schedule: "0 3 * * *", source: "kubernetes" }),
+      );
+      const report = checkHealth(tasks);
+      const dup = report.warnings.find((w) => w.code === "DUPLICATE_SCHEDULE");
+      expect(dup).toBeDefined();
+      expect(dup!.tasks).toHaveLength(200);
+      expect(dup!.message).toContain("200 tasks");
+    });
+
+    it("handles tasks with overlapping names across 10+ sources", () => {
+      const sources = Array.from({ length: 12 }, (_, i) => `source-${i}`);
+      const tasks = sources.map((src) =>
+        makeTask({ name: "shared-job", schedule: "0 3 * * *", source: src }),
+      );
+      const report = checkHealth(tasks);
+      const overlap = report.warnings.find((w) => w.code === "OVERLAPPING_NAMES");
+      expect(overlap).toBeDefined();
+      expect(overlap!.tasks).toHaveLength(12);
+      // All 12 sources should be mentioned
+      for (const src of sources) {
+        expect(overlap!.message).toContain(src);
+      }
+    });
+  });
+
+  describe("edge cases: suspended metadata variants", () => {
+    it("detects suspended='true' as string (not boolean)", () => {
+      const report = checkHealth([
+        makeTask({
+          name: "string-suspended",
+          schedule: "0 3 * * *",
+          source: "kubernetes",
+          metadata: { suspended: "true" },
+        }),
+      ]);
+      const w = report.warnings.find((w) => w.code === "SUSPENDED");
+      expect(w).toBeDefined();
+    });
+
+    it("detects status with mixed case 'Suspended'", () => {
+      const report = checkHealth([
+        makeTask({
+          name: "mixed-case-job",
+          schedule: "0 3 * * *",
+          source: "kubernetes",
+          metadata: { status: "Suspended" },
+        }),
+      ]);
+      const w = report.warnings.find((w) => w.code === "SUSPENDED");
+      expect(w).toBeDefined();
+    });
+
+    it("detects status with upper case 'DISABLED'", () => {
+      const report = checkHealth([
+        makeTask({
+          name: "upper-disabled",
+          schedule: "0 3 * * *",
+          source: "kubernetes",
+          metadata: { status: "DISABLED" },
+        }),
+      ]);
+      const w = report.warnings.find((w) => w.code === "SUSPENDED");
+      expect(w).toBeDefined();
+    });
+
+    it("detects mixed-case key 'Suspended' with value 'True'", () => {
+      const report = checkHealth([
+        makeTask({
+          name: "mixed-key",
+          schedule: "0 3 * * *",
+          source: "kubernetes",
+          metadata: { Suspended: "True" },
+        }),
+      ]);
+      const w = report.warnings.find((w) => w.code === "SUSPENDED");
+      expect(w).toBeDefined();
+    });
+  });
+
+  describe("edge cases: every-minute + duplicate combo", () => {
+    it("produces both TOO_FREQUENT and DUPLICATE_SCHEDULE warnings", () => {
+      const report = checkHealth([
+        makeTask({ name: "poller-a", schedule: "* * * * *", source: "crontab" }),
+        makeTask({ name: "poller-b", schedule: "* * * * *", source: "crontab" }),
+      ]);
+      const codes = report.warnings.map((w) => w.code);
+      expect(codes).toContain("TOO_FREQUENT");
+      expect(codes).toContain("DUPLICATE_SCHEDULE");
+      // Both pollers get TOO_FREQUENT, and both share schedule = DUPLICATE
+      const tooFreq = report.warnings.filter((w) => w.code === "TOO_FREQUENT");
+      expect(tooFreq).toHaveLength(2);
+    });
+  });
+
+  describe("edge cases: single task", () => {
+    it("single task cannot trigger DUPLICATE_SCHEDULE or OVERLAPPING_NAMES", () => {
+      const report = checkHealth([
+        makeTask({ name: "solo", schedule: "0 3 * * *", source: "crontab" }),
+      ]);
+      const dup = report.warnings.filter((w) => w.code === "DUPLICATE_SCHEDULE");
+      const overlap = report.warnings.filter((w) => w.code === "OVERLAPPING_NAMES");
+      expect(dup).toHaveLength(0);
+      expect(overlap).toHaveLength(0);
+      expect(report.healthyTasks).toBe(1);
     });
   });
 

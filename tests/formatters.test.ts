@@ -145,3 +145,223 @@ describe("format", () => {
     expect(format([], "yaml").trim()).toBe("[]");
   });
 });
+
+// ── Edge-case tests ──────────────────────────────────────────────────
+
+describe("formatTable edge cases", () => {
+  it("handles task with all optional fields undefined", () => {
+    const task: ScheduledTask = { name: "bare", schedule: "* * * * *", source: "test" };
+    const output = formatTable([task]);
+    expect(output).toContain("bare");
+    expect(output).toContain("N/A");
+  });
+
+  it("handles extremely long name (500+ chars)", () => {
+    const longName = "x".repeat(600);
+    const task: ScheduledTask = { name: longName, schedule: "* * * * *", source: "test" };
+    const output = formatTable([task]);
+    expect(output).toContain(longName);
+    const lines = output.split("\n");
+    // All rows same width
+    for (let i = 2; i < lines.length; i++) {
+      expect(lines[i].length).toBe(lines[0].length);
+    }
+  });
+
+  it("handles newlines in task name", () => {
+    const task: ScheduledTask = { name: "line1\nline2", schedule: "0 * * * *", source: "test" };
+    const output = formatTable([task]);
+    // The newline will be present in the output since table formatter doesn't strip it
+    expect(output).toContain("line1\nline2");
+  });
+
+  it("handles XSS-like content in name", () => {
+    const task: ScheduledTask = {
+      name: '<script>alert(1)</script>',
+      schedule: "* * * * *",
+      source: "test",
+    };
+    const output = formatTable([task]);
+    expect(output).toContain("<script>alert(1)</script>");
+  });
+
+  it("handles tab characters in fields", () => {
+    const task: ScheduledTask = { name: "name\twith\ttabs", schedule: "* * * * *", source: "test" };
+    const output = formatTable([task]);
+    expect(output).toContain("name\twith\ttabs");
+  });
+
+  it("handles unicode/emoji in name", () => {
+    const task: ScheduledTask = { name: "🕐 Daily backup", schedule: "0 2 * * *", source: "test" };
+    const output = formatTable([task]);
+    expect(output).toContain("🕐 Daily backup");
+  });
+
+  it("handles 1000 tasks without error", () => {
+    const tasks: ScheduledTask[] = Array.from({ length: 1000 }, (_, i) => ({
+      name: `task-${i}`,
+      schedule: "* * * * *",
+      source: "test",
+    }));
+    const output = formatTable(tasks);
+    const lines = output.split("\n");
+    // header + separator + 1000 rows
+    expect(lines).toHaveLength(1002);
+  });
+
+  it("throws on task with nextRun as invalid Date (NaN)", () => {
+    const task: ScheduledTask = {
+      name: "bad-date",
+      schedule: "* * * * *",
+      source: "test",
+      nextRun: new Date("not-a-date"),
+    };
+    // toISOString() throws RangeError for invalid dates
+    expect(() => formatTable([task])).toThrow("Invalid time value");
+  });
+
+  it("handles all fields as empty strings", () => {
+    const task: ScheduledTask = { name: "", schedule: "", source: "" };
+    const output = formatTable([task]);
+    expect(output).toContain("│");
+    const lines = output.split("\n");
+    expect(lines).toHaveLength(3);
+  });
+
+  it("sorts tasks with null nextRun mixed with valid nextRun", () => {
+    const tasks: ScheduledTask[] = [
+      { name: "no-next", schedule: "* * * * *", source: "test" },
+      { name: "has-next", schedule: "* * * * *", source: "test", nextRun: new Date("2025-01-01T00:00:00Z") },
+      { name: "also-no-next", schedule: "* * * * *", source: "test" },
+    ];
+    const output = formatTable(tasks);
+    // Should render all three without crashing
+    const lines = output.split("\n");
+    expect(lines).toHaveLength(5); // header + separator + 3 rows
+    expect(output).toContain("N/A");
+    expect(output).toContain("2025-01-01");
+  });
+});
+
+describe("formatJson edge cases", () => {
+  it("handles empty task array", () => {
+    expect(formatJson([])).toBe("[]");
+  });
+
+  it("handles task with all optional fields undefined", () => {
+    const task: ScheduledTask = { name: "bare", schedule: "* * * * *", source: "test" };
+    const output = formatJson([task]);
+    const parsed = JSON.parse(output);
+    expect(parsed[0].name).toBe("bare");
+    expect(parsed[0].command).toBeUndefined();
+    expect(parsed[0].nextRun).toBeUndefined();
+  });
+
+  it("handles XSS-like content — properly escaped in JSON", () => {
+    const task: ScheduledTask = {
+      name: '<script>alert("xss")</script>',
+      schedule: "* * * * *",
+      source: "test",
+    };
+    const output = formatJson([task]);
+    const parsed = JSON.parse(output);
+    expect(parsed[0].name).toBe('<script>alert("xss")</script>');
+  });
+
+  it("handles newlines and tabs in fields", () => {
+    const task: ScheduledTask = {
+      name: "line1\nline2",
+      schedule: "tab\there",
+      source: "test",
+    };
+    const output = formatJson([task]);
+    const parsed = JSON.parse(output);
+    expect(parsed[0].name).toBe("line1\nline2");
+    expect(parsed[0].schedule).toBe("tab\there");
+  });
+
+  it("handles unicode/emoji in name", () => {
+    const task: ScheduledTask = { name: "🕐 Daily backup", schedule: "0 2 * * *", source: "test" };
+    const parsed = JSON.parse(formatJson([task]));
+    expect(parsed[0].name).toBe("🕐 Daily backup");
+  });
+
+  it("handles task with special characters that need JSON escaping", () => {
+    const task: ScheduledTask = {
+      name: 'back\\slash "quotes"',
+      schedule: "* * * * *",
+      source: "test",
+    };
+    const output = formatJson([task]);
+    const parsed = JSON.parse(output);
+    expect(parsed[0].name).toBe('back\\slash "quotes"');
+  });
+});
+
+describe("formatYaml edge cases", () => {
+  it("handles empty task array", () => {
+    expect(formatYaml([]).trim()).toBe("[]");
+  });
+
+  it("handles task with all optional fields undefined", () => {
+    const task: ScheduledTask = { name: "bare", schedule: "* * * * *", source: "test" };
+    const output = formatYaml([task]);
+    expect(output).toContain("name: bare");
+  });
+
+  it("handles special YAML characters in schedule (: { } [ ])", () => {
+    const task: ScheduledTask = {
+      name: "yaml-special",
+      schedule: "{cron: [0 * * * *]}",
+      source: "test",
+    };
+    const output = formatYaml([task]);
+    // Should be valid YAML — the library should quote/escape the value
+    expect(output).toContain("{cron: [0 * * * *]}");
+  });
+
+  it("handles values that look like YAML anchors", () => {
+    const task: ScheduledTask = {
+      name: "&anchor",
+      schedule: "*alias",
+      source: "test",
+    };
+    const output = formatYaml([task]);
+    // The YAML library should quote these to avoid anchor/alias interpretation
+    expect(output).toContain("&anchor");
+  });
+
+  it("handles multiline string values", () => {
+    const task: ScheduledTask = {
+      name: "multi\nline\nname",
+      schedule: "* * * * *",
+      source: "test",
+    };
+    const output = formatYaml([task]);
+    expect(output).toContain("multi");
+    expect(output).toContain("line");
+  });
+
+  it("handles XSS-like content", () => {
+    const task: ScheduledTask = {
+      name: '<script>alert(1)</script>',
+      schedule: "* * * * *",
+      source: "test",
+    };
+    const output = formatYaml([task]);
+    expect(output).toContain("<script>alert(1)</script>");
+  });
+
+  it("handles unicode/emoji in name", () => {
+    const task: ScheduledTask = { name: "🕐 Daily backup", schedule: "0 2 * * *", source: "test" };
+    const output = formatYaml([task]);
+    expect(output).toContain("🕐 Daily backup");
+  });
+
+  it("handles tab characters in fields", () => {
+    const task: ScheduledTask = { name: "tab\there", schedule: "* * * * *", source: "test" };
+    const output = formatYaml([task]);
+    // YAML lib should handle the tab somehow (quote or escape)
+    expect(output).toBeDefined();
+  });
+});

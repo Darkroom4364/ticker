@@ -1,0 +1,6 @@
+{
+  "name": "my-worker",
+  "triggers": {
+    "crons": null
+  }
+}

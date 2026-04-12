@@ -1,0 +1,14 @@
+name = "my-worker"
+main = "src/index.ts"
+
+[env.production]
+name = "my-worker-prod"
+
+[env.production.vars]
+API_KEY = "secret"
+
+[triggers]
+crons = ["0 6 * * *"]
+
+[build]
+command = "npm run build"
