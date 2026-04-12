@@ -2,47 +2,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ScanOptions } from "../src/types.js";
 
 vi.mock("node:child_process", () => ({
-  exec: vi.fn(),
   execFile: vi.fn(),
 }));
 
-import { exec, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import { SystemdScanner } from "../src/scanners/systemd.js";
 
-const mockedExec = vi.mocked(exec);
 const mockedExecFile = vi.mocked(execFile);
 
-/** Helper to make exec resolve differently per command pattern */
+/** Helper to make execFile resolve differently per command pattern */
 function mockExecByCommand(handlers: Record<string, string | Error>): void {
-  mockedExec.mockImplementation((cmd: unknown, callback: unknown) => {
+  mockedExecFile.mockImplementation((cmd: unknown, args: unknown, _opts: unknown, callback: unknown) => {
     const command = cmd as string;
-    for (const [key, value] of Object.entries(handlers)) {
-      if (command.includes(key)) {
-        if (value instanceof Error) {
-          (callback as (err: Error) => void)(value);
-        } else {
-          (callback as (err: null, result: { stdout: string; stderr: string }) => void)(null, {
-            stdout: value,
-            stderr: "",
-          });
-        }
-        return undefined as ReturnType<typeof exec>;
-      }
-    }
-    // Default: return empty
-    (callback as (err: null, result: { stdout: string; stderr: string }) => void)(null, {
-      stdout: "",
-      stderr: "",
-    });
-    return undefined as ReturnType<typeof exec>;
-  });
-
-  // Mock execFile for systemctl show calls (getTimerCalendar and getServiceDescription)
-  mockedExecFile.mockImplementation((_cmd: unknown, args: unknown, callback: unknown) => {
     const argList = args as string[];
-    const argStr = argList.join(" ");
+    const fullCmd = `${command} ${argList.join(" ")}`;
     for (const [key, value] of Object.entries(handlers)) {
-      if (argStr.includes(key)) {
+      if (fullCmd.includes(key)) {
         if (value instanceof Error) {
           (callback as (err: Error) => void)(value);
         } else {
@@ -54,6 +29,7 @@ function mockExecByCommand(handlers: Record<string, string | Error>): void {
         return undefined as ReturnType<typeof execFile>;
       }
     }
+    // Default: return empty
     (callback as (err: null, result: { stdout: string; stderr: string }) => void)(null, {
       stdout: "",
       stderr: "",
@@ -225,7 +201,7 @@ describe("SystemdScanner", () => {
       }
     });
 
-    it("uses execFile (not exec) for systemctl show to prevent command injection", async () => {
+    it("uses execFile for all systemctl calls to prevent command injection", async () => {
       const maliciousUnit = "evil$(rm -rf /).timer";
       const timerOutput = `NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
 Mon 2025-01-20 00:00:00 UTC  5h left       Sun 2025-01-19 00:00:00 UTC  18h ago      ${maliciousUnit}              evil.service

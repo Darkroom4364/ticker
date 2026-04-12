@@ -2,19 +2,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ScanOptions } from "../src/types.js";
 
 vi.mock("node:child_process", () => ({
-  exec: vi.fn(),
+  execFile: vi.fn(),
 }));
 
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { KubernetesScanner } from "../src/scanners/kubernetes.js";
 
-const mockedExec = vi.mocked(exec);
+const mockedExecFile = vi.mocked(execFile);
 
 function mockExecByCommand(handlers: Record<string, string | Error>): void {
-  mockedExec.mockImplementation((cmd: unknown, callback: unknown) => {
+  mockedExecFile.mockImplementation((cmd: unknown, args: unknown, _opts: unknown, callback: unknown) => {
     const command = cmd as string;
+    const argList = args as string[];
+    const fullCmd = `${command} ${argList.join(" ")}`;
     for (const [key, value] of Object.entries(handlers)) {
-      if (command.includes(key)) {
+      if (fullCmd.includes(key)) {
         if (value instanceof Error) {
           (callback as (err: Error) => void)(value);
         } else {
@@ -23,11 +25,11 @@ function mockExecByCommand(handlers: Record<string, string | Error>): void {
             stderr: "",
           });
         }
-        return undefined as ReturnType<typeof exec>;
+        return undefined as ReturnType<typeof execFile>;
       }
     }
-    (callback as (err: Error) => void)(new Error(`Unexpected command: ${command}`));
-    return undefined as ReturnType<typeof exec>;
+    (callback as (err: Error) => void)(new Error(`Unexpected command: ${fullCmd}`));
+    return undefined as ReturnType<typeof execFile>;
   });
 }
 
