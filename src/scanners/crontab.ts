@@ -1,11 +1,14 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Scanner, ScanOptions, ScheduledTask } from "../types.js";
 import { parseCronExpression } from "../utils/cron.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+const EXEC_TIMEOUT = 10_000;
+const MAX_BUFFER = 10 * 1024 * 1024;
 
 /** Regex to detect environment variable lines like SHELL=/bin/bash */
 const ENV_VAR_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -130,7 +133,7 @@ export class CrontabScanner implements Scanner {
 
   async isAvailable(): Promise<boolean> {
     try {
-      await execAsync("which crontab");
+      await execFileAsync("which", ["crontab"], { timeout: 5_000 });
       return true;
     } catch {
       return false;
@@ -155,7 +158,10 @@ export class CrontabScanner implements Scanner {
     const tasks: ScheduledTask[] = [];
 
     try {
-      const { stdout } = await execAsync("crontab -l");
+      const { stdout } = await execFileAsync("crontab", ["-l"], {
+        timeout: EXEC_TIMEOUT,
+        maxBuffer: MAX_BUFFER,
+      });
       const lines = stdout.split("\n");
 
       for (const line of lines) {

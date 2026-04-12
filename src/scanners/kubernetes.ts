@@ -1,9 +1,12 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Scanner, ScanOptions, ScheduledTask } from "../types.js";
 import { parseCronExpression } from "../utils/cron.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+const EXEC_TIMEOUT = 30_000;
+const MAX_BUFFER = 10 * 1024 * 1024;
 
 /** Minimal shape of a K8s CronJob from `kubectl get cronjobs -o json` */
 interface K8sCronJobList {
@@ -42,7 +45,7 @@ export class KubernetesScanner implements Scanner {
 
   async isAvailable(): Promise<boolean> {
     try {
-      await execAsync("which kubectl");
+      await execFileAsync("which", ["kubectl"], { timeout: 5_000 });
       return true;
     } catch {
       return false;
@@ -53,7 +56,10 @@ export class KubernetesScanner implements Scanner {
     const tasks: ScheduledTask[] = [];
 
     try {
-      const { stdout } = await execAsync("kubectl get cronjobs -A -o json");
+      const { stdout } = await execFileAsync("kubectl", ["get", "cronjobs", "-A", "-o", "json"], {
+        timeout: EXEC_TIMEOUT,
+        maxBuffer: MAX_BUFFER,
+      });
       const list: K8sCronJobList = JSON.parse(stdout);
 
       for (const cronJob of list.items) {
