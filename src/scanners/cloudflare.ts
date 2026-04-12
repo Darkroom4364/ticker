@@ -27,17 +27,28 @@ function parseCronsFromToml(content: string): string[] {
   const triggersBlock =
     nextSection === -1 ? afterTriggers : afterTriggers.slice(0, nextSection);
 
-  // Find crons = [...] in the triggers block
-  const cronsMatch = triggersBlock.match(/^\s*crons\s*=\s*\[([^\]]*)\]/m);
-  if (!cronsMatch) return [];
+  // Find crons = [ and then track bracket depth to find the matching ]
+  const cronsStart = triggersBlock.match(/^\s*crons\s*=\s*\[/m);
+  if (!cronsStart || cronsStart.index === undefined) return [];
 
-  const arrayContent = cronsMatch[1];
-  // Extract quoted strings from the array
+  const startIdx = cronsStart.index + cronsStart[0].length;
+  let depth = 1;
+  let endIdx = -1;
+  for (let i = startIdx; i < triggersBlock.length; i++) {
+    const ch = triggersBlock[i];
+    if (ch === "[") depth++;
+    else if (ch === "]") { depth--; if (depth === 0) { endIdx = i; break; } }
+  }
+  if (endIdx === -1) return [];
+
+  const arrayContent = triggersBlock.slice(startIdx, endIdx);
+  // Extract quoted strings, handling escaped quotes (\" inside double-quoted)
   const strings: string[] = [];
-  const stringRegex = /"([^"]*)"|'([^']*)'/g;
+  const stringRegex = /"((?:[^"\\]|\\.)*)"|'([^']*)'/g;
   let match: RegExpExecArray | null;
   while ((match = stringRegex.exec(arrayContent)) !== null) {
-    strings.push(match[1] ?? match[2]);
+    const raw = match[1] ?? match[2];
+    strings.push(raw.replace(/\\"/g, '"'));
   }
 
   return strings;

@@ -33,8 +33,15 @@ function parseTimerOutput(stdout: string): Array<{
   const leftCol = headerLine.indexOf("LEFT");
   const unitCol = headerLine.indexOf("UNIT");
   const activatesCol = headerLine.indexOf("ACTIVATES");
+  const lastCol = headerLine.indexOf("LAST");
 
   if (nextCol === -1 || leftCol === -1 || unitCol === -1) return results;
+
+  // Find the column that immediately follows NEXT, regardless of column order
+  const colPositions = [nextCol, leftCol, unitCol, activatesCol, lastCol].filter(
+    (c) => c > nextCol,
+  );
+  const nextEnd = colPositions.length > 0 ? Math.min(...colPositions) : undefined;
 
   // Parse data lines (after header, before summary)
   for (let i = headerIndex + 1; i < lines.length; i++) {
@@ -46,7 +53,7 @@ function parseTimerOutput(stdout: string): Array<{
     // Skip lines that are too short
     if (line.length < unitCol) continue;
 
-    const next = line.substring(nextCol, leftCol).trim();
+    const next = (nextEnd != null ? line.substring(nextCol, nextEnd) : line.substring(nextCol)).trim();
     const unitPart =
       activatesCol >= 0
         ? line.substring(unitCol, activatesCol).trim()
