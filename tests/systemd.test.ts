@@ -164,6 +164,14 @@ describe("SystemdScanner", () => {
       expect(tasks).toHaveLength(0);
     });
 
+    it("throws on unexpected errors", async () => {
+      mockExecByCommand({
+        "list-timers": new Error("ENOMEM: not enough memory"),
+      });
+
+      await expect(scanner.scan(defaultOptions)).rejects.toThrow("ENOMEM");
+    });
+
     it("falls back to 'systemd timer' when calendar expression unavailable", async () => {
       mockExecByCommand({
         "list-timers": NORMAL_TIMER_OUTPUT,

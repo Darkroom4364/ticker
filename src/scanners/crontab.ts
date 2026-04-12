@@ -182,8 +182,7 @@ export class CrontabScanner implements Scanner {
       ) {
         return [];
       }
-      // Other unexpected errors — still don't crash, just return empty
-      return [];
+      throw error;
     }
 
     return tasks;
